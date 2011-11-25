@@ -31,6 +31,8 @@
 
 @protocol KGPagedDocControlDelegate <NSObject>
 
+@optional
+- (BOOL)document:(KGPagedDocControl*)doc didClickLink:(NSURL*)url;
 - (void)document:(KGPagedDocControl*)doc didExecuteCommand:(NSURL*)url;
 
 @end

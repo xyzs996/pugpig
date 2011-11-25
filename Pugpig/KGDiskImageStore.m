@@ -35,11 +35,13 @@
 @property (nonatomic, retain) NSMutableDictionary *store;
 @property (nonatomic, retain) NSMutableArray *queue;
 
-- (id)keyForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (id)keyForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (void)removeFilesStartingWith:(NSString*)filename;
 - (NSString*)fileNameForKey:(id)key;
 - (BOOL)imageWrittenForKey:(id)key;
 - (UIImage*)readImageForKey:(id)key;
 - (void)writeImage:(UIImage*)image forKey:(id)key;
+- (void)eraseImageForKey:(id)key;
 - (void)enqueueImage:(UIImage*)image forKey:(id)key;
 
 @end
@@ -52,8 +54,15 @@
 @end
 
 @implementation KGDiskImageStoreObject
+
 @synthesize onDisk;
 @synthesize image;
+
+- (void)dealloc {
+  [image release];
+  [super dealloc];
+}
+
 @end
 
 
@@ -65,11 +74,23 @@
 @synthesize queue;
 
 - (id)init {
+  return [self initWithPath:nil];
+}
+
+- (id)initWithPath:(NSString*)path {
   self = [super init];
   if (self) {
-    NSArray *cachePaths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+    if (![path hasPrefix:@"/"]) {
+      NSArray *cachePaths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+      if ([cachePaths count])
+        path = [[cachePaths objectAtIndex:0] stringByAppendingPathComponent:path];
+    }
+    
+    NSFileManager *fileman = [NSFileManager defaultManager];
+    [fileman createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+
     self.cacheSize = 7;   // default cache size
-    self.cacheDir = ([cachePaths count] > 0) ? [cachePaths objectAtIndex:0] : nil;
+    self.cacheDir = path;
     self.store = [[[NSMutableDictionary alloc] init] autorelease];
     self.queue = [[[NSMutableArray alloc] init] autorelease];
   }
@@ -83,16 +104,16 @@
   [super dealloc];
 }
 
-- (void)removeAllImages {
+- (void)releaseMemory {
   for (id key in store) {
     KGDiskImageStoreObject *obj = [store objectForKey:key];
     obj.image = nil;
   }
 }
 
-- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  if (![self hasImageForPageNumber:pageNumber orientation:orientation]) {
-    id key = [self keyForPageNumber:pageNumber orientation:orientation];
+- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  if (![self hasImageForPageNumber:pageNumber variant:variant]) {
+    id key = [self keyForPageNumber:pageNumber variant:variant];
     KGDiskImageStoreObject *obj = [store objectForKey:key];
     obj.onDisk = YES;
     obj.image = image;
@@ -101,14 +122,14 @@
   }
 }
 
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  return [self imageForPageNumber:pageNumber orientation:orientation withOptions:KGImageStoreFetch];
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  return [self imageForPageNumber:pageNumber variant:variant withOptions:KGImageStoreFetch];
 }
 
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation withOptions:(KGImageStoreOptions)options {
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant withOptions:(KGImageStoreOptions)options {
   UIImage *image = nil;
-  if ([self hasImageForPageNumber:pageNumber orientation:orientation]) {
-    id key = [self keyForPageNumber:pageNumber orientation:orientation];
+  if ([self hasImageForPageNumber:pageNumber variant:variant]) {
+    id key = [self keyForPageNumber:pageNumber variant:variant];
     KGDiskImageStoreObject *obj = [store objectForKey:key];
 
     image = (obj.image ? obj.image : [self readImageForKey:key]);
@@ -122,8 +143,8 @@
   return image; 
 }
 
-- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  id key = [self keyForPageNumber:pageNumber orientation:orientation];
+- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  id key = [self keyForPageNumber:pageNumber variant:variant];
   KGDiskImageStoreObject *obj = [store objectForKey:key];
   if ([store objectForKey:key] == nil) { 
     obj = [[[KGDiskImageStoreObject alloc] init] autorelease];
@@ -133,12 +154,47 @@
   return [obj onDisk];
 }
 
-- (id)keyForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  return [NSNumber numberWithInt:(pageNumber*2 + (int)orientation)];
+- (void)removeImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  // TODO: don't erase entire store and queue
+  id key = [self keyForPageNumber:pageNumber variant:variant];
+  NSString *filepath = [self fileNameForKey:key];
+  NSFileManager *fileman = [NSFileManager defaultManager];
+  [fileman removeItemAtPath:filepath error:nil];
+  self.store = [[[NSMutableDictionary alloc] init] autorelease];
+  self.queue = [[[NSMutableArray alloc] init] autorelease];
+}
+
+- (void)removeImagesForPageNumber:(NSUInteger)pageNumber {
+  // TODO: don't erase entire store and queue
+  NSString *baseFilename = [NSString stringWithFormat:@"snap-%d-",pageNumber];
+  [self removeFilesStartingWith:baseFilename];
+  self.store = [[[NSMutableDictionary alloc] init] autorelease];
+  self.queue = [[[NSMutableArray alloc] init] autorelease];
+}
+
+- (void)removeAllImages {
+  [self removeFilesStartingWith:@"snap-"];
+  self.store = [[[NSMutableDictionary alloc] init] autorelease];
+  self.queue = [[[NSMutableArray alloc] init] autorelease];
+}
+
+- (id)keyForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  return [NSString stringWithFormat:@"%d-%@", pageNumber, variant];
+}
+
+- (void)removeFilesStartingWith:(NSString*)filename {
+  NSString *predicateString = [NSString stringWithFormat:@"self BEGINSWITH '%@'",filename];
+  NSFileManager *fileman = [NSFileManager defaultManager];
+  NSArray *filenames = [fileman contentsOfDirectoryAtPath:cacheDir error:nil];
+  filenames = [filenames filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:predicateString]];
+  for (NSString *filename in filenames) {
+    NSString *filepath = [cacheDir stringByAppendingPathComponent:filename];
+    [fileman removeItemAtPath:filepath error:nil];
+  }
 }
 
 - (NSString*)fileNameForKey:(id)key {
-  return  [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"snap-%d.jpg", [key unsignedIntegerValue]]];
+  return  [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"snap-%@.jpg", key]];
 }
 
 - (BOOL)imageWrittenForKey:(id)key {
@@ -154,6 +210,11 @@
 - (void)writeImage:(UIImage*)image forKey:(id)key {
   NSString *cacheFile = [self fileNameForKey:key];
   [UIImageJPEGRepresentation(image, 0.5) writeToFile:cacheFile atomically:YES];
+}
+
+- (void)eraseImageForKey:(id)key {
+  NSString *cacheFile = [self fileNameForKey:key];
+  [[NSFileManager defaultManager] removeItemAtPath:cacheFile error:nil];
 }
 
 - (void)enqueueImage:(UIImage *)image forKey:(id)key {

@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGDocumentPaneManagement.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -28,24 +28,28 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
+#import "KGOrientation.h"
+#import "KGDocumentDataSource.h"
 #import "KGDocumentImageStore.h"
 
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
-}
+@protocol KGDocumentPaneManagement <NSObject>
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
-
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
 @property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
+@property (nonatomic, retain) id<KGDocumentDataSource> dataSource;
 
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (NSUInteger)numberOfPanesInOrientation:(KGOrientation)orientation;
+- (NSInteger)pageForPaneNumber:(NSUInteger)pane orientation:(KGOrientation)orientation;
+- (NSInteger)paneForPageNumber:(NSUInteger)page orientation:(KGOrientation)orientation;
+- (CGRect)frameForPageNumber:(NSUInteger)page pageSize:(CGSize)size orientation:(KGOrientation)orientation;
+- (BOOL)layoutWebView:(UIWebView*)webView pageSize:(CGSize)size orientation:(KGOrientation)orientation;
+- (void)takeSnapshotsForWebView:(UIWebView*)webView pageSize:(CGSize)size orientation:(KGOrientation)orientation progressHandler:(void(^)(NSUInteger,BOOL))progress completionHandler:(void(^)(UIWebView*))completion;
+- (BOOL)hasSnapshotsForPageNumber:(NSUInteger)page orientation:(KGOrientation)orientation;
+- (UIImage*)snapshotForPaneNumber:(NSUInteger)pane orientation:(KGOrientation)orientation withOptions:(KGImageStoreOptions)options;
+- (void)resetPageNumber:(NSUInteger)page;
+- (void)resetAllPages;
+- (NSInteger)paneFromFragment:(NSString*)fragment inWebView:(UIWebView*)webView pageSize:(CGSize)size orientation:(KGOrientation)orientation;
+- (CGFloat)fractionalPageFromPane:(CGFloat)pane orientation:(KGOrientation)orientation;
+- (id)persistentStateForPaneNumber:(NSUInteger)pane orientation:(KGOrientation)orientation;
+- (NSUInteger)paneFromPersistentState:(id)state orientation:(KGOrientation)orientation;
 
 @end

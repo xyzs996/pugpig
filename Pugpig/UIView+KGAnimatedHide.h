@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  UIView+KGAnimatedHide.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -28,24 +28,10 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
+#import "KGAnimationStyle.h"
 
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
-}
+@interface UIView (KGAnimatedHide)
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
-
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
-
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (void)setHidden:(BOOL)hidden animationStyle:(KGAnimationStyle)style duration:(NSTimeInterval)duration;
 
 @end

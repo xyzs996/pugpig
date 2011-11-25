@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGControlEvents.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,25 +27,17 @@
 //  SUCH DAMAGE.
 //
 
-#import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
-
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
-}
-
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
-
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
-
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-
-@end
+// Note that the bits reserved for applications in the UIControlEvents enum 
+// only give us bits 24 to 27 which is a bit stingy. As a result we've had to 
+// steal another 4 bits in the unreserved range 20 to 23. Hopefully this
+// should still be safe.
+typedef enum {
+  KGControlEventDataSourceWillLoadForeground = (1 << 20),
+  KGControlEventDataSourceWillLoadBackground = (1 << 21),
+  KGControlEventDataSourceDidLoadForeground  = (1 << 22),
+  KGControlEventDataSourceDidLoadBackground  = (1 << 23),
+  KGControlEventContentLoadFinished          = (1 << 24),
+  KGControlEventContentSnapshotFinished      = (1 << 25),
+  KGControlEventContentLayoutChanged         = (1 << 26),
+  KGControlEventContentSizeChanged           = (1 << 27), 
+} KGControlEvents;

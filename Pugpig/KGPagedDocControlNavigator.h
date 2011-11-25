@@ -28,18 +28,18 @@
 //
 
 #import "KGOrientation.h"
-#import "KGPagedDocControlImageStore.h"
+#import "KGDocumentImageStore.h"
 
 @protocol KGPagedDocControlNavigator <NSObject>
 
 // TODO: make some of these optional?
+// TODO: can a lot of these be replaced with the new KV observing code?
 
-@property (nonatomic, assign, getter = isActive) BOOL active;
 @property (nonatomic, assign) NSUInteger numberOfPages;
 @property (nonatomic, assign) NSUInteger pageNumber;
 @property (nonatomic, assign) CGFloat fractionalPageNumber;
 @property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGPagedDocControlImageStore> dataSource;
+@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
 
 - (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
 

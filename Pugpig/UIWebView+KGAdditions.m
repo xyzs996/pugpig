@@ -40,6 +40,11 @@
 - (void)setScrollEnabled:(BOOL)canScroll {
 	UIScrollView *webScrollView = [[self subviews] lastObject];
 	if (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) {
+    // When changing from a scrolling webview to a non-scrolling webview
+    // we need to scrollToTop to make sure the view doesn't end up scrolled
+    // halfway down a page with no way to get back up.
+    if (webScrollView.scrollEnabled && !canScroll)
+      [self stringByEvaluatingJavaScriptFromString:@"document.getElementsByTagName('body')[0].scrollTop = 0;"];
 		webScrollView.scrollEnabled = canScroll;
 	}
 }

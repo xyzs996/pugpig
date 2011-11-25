@@ -1,5 +1,5 @@
 //
-//  KGPagedDocControlDataSource.h
+//  KGBrowserViewController+Internal.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,12 +27,21 @@
 //  SUCH DAMAGE.
 //
 
-@class KGPagedDocControl;
+#import "KGBrowserViewController.h"
 
-@protocol KGPagedDocControlDataSource <NSObject>
+@interface KGBrowserViewController() <UIWebViewDelegate>
 
-- (NSUInteger)numberOfPagesInDocument:(KGPagedDocControl*)doc;
-- (NSURL*)document:(KGPagedDocControl*)doc urlForPageNumber:(NSUInteger)pageNumber;
-- (NSInteger)document:(KGPagedDocControl*)doc pageNumberForURL:(NSURL*)url;
+@property (nonatomic, retain) UIWebView *webView;
+@property (nonatomic, retain) UIToolbar *toolbar;
+@property (nonatomic, retain) UINavigationBar *navbar;
+@property (nonatomic, retain) UIBarButtonItem *backButton;
+@property (nonatomic, retain) UIBarButtonItem *forwardButton;
+@property (nonatomic, retain) UIBarButtonItem *browserButton;
+@property (nonatomic, copy) NSString *pendingHTMLContent;
+@property (nonatomic, copy) NSURL *activeUrl;
+
+- (void)dismissAction:(id)sender;
+- (void)openInBrowserAction:(id)sender;
+- (void)enableNavButtons;
 
 @end

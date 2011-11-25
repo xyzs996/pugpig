@@ -28,16 +28,16 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "KGPagedDocControlDataSource.h"
+#import "KGDocumentDataSource.h"
 
-@interface KGLocalFileDataSource : NSObject<KGPagedDocControlDataSource> {
+@interface KGLocalFileDataSource : NSObject<KGDocumentDataSource> {
 }
 
 - (id)initWithPath:(NSString*)path;
 - (id)initWithPath:(NSString*)path andExtension:(NSString*)extension;
 
-- (NSUInteger)numberOfPagesInDocument:(KGPagedDocControl*)doc;
-- (NSURL*)document:(KGPagedDocControl*)doc urlForPageNumber:(NSUInteger)pageNumber;
-- (NSInteger)document:(KGPagedDocControl*)doc pageNumberForURL:(NSURL*)url;
+- (NSUInteger)numberOfPages;
+- (NSURL*)urlForPageNumber:(NSUInteger)pageNumber;
+- (NSInteger)pageNumberForURL:(NSURL*)url;
 
 @end

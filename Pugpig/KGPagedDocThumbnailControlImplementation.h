@@ -28,25 +28,23 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGPagedDocControlImageStore.h"
+#import "KGPagedDocThumbnailControl.h"
 
-@interface KGPagedDocThumbnailControlImplementation : UIControl<UIScrollViewDelegate,KGPagedDocControlNavigator> {
+@interface KGPagedDocThumbnailControlImplementation : KGPagedDocThumbnailControl<UIScrollViewDelegate,KGPagedDocControlNavigator> {
  @private 
   CGSize lastLayoutSize;
   CGFloat retinaScale;
 }
 
-@property (nonatomic, assign, getter = isActive) BOOL active;
 @property (nonatomic, assign) NSUInteger numberOfPages;
 @property (nonatomic, assign) NSUInteger pageNumber;
 @property (nonatomic, assign) CGFloat fractionalPageNumber;
 @property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGPagedDocControlImageStore> dataSource;
+@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
 
 @property (nonatomic, assign) CGSize portraitSize, landscapeSize;
 @property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGPagedDocControlImageStore> imageStore;
+@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
 @property (nonatomic, retain) UIImage *portraitPlaceholderImage;
 @property (nonatomic, retain) UIImage *landscapePlaceholderImage;
 

@@ -54,7 +54,6 @@
 
 @implementation KGPagedDocThumbnailControlImplementation
 
-@dynamic active;
 @synthesize numberOfPages;
 @synthesize pageNumber;
 @synthesize fractionalPageNumber;
@@ -113,39 +112,6 @@
 //------------------------------------------------------------------------------
 // MARK: Public properties
 
-- (BOOL)isActive {
-  return self.alpha > 0.0;
-}
-
-- (void)setActive:(BOOL)active {
-  BOOL newAlpha;
-  CGRect oldFrame, newFrame;
-  CGSize size = self.bounds.size;
-  CGSize parentSize = self.superview.bounds.size;
-  
-  if (active) {   
-    newAlpha = 1.0;
-    oldFrame = CGRectMake(0, parentSize.height, size.width, size.height);
-    newFrame = CGRectOffset(oldFrame, 0.0, -size.height);    
-  }
-  else {
-    newAlpha = 0.0;
-    oldFrame = CGRectMake(0, parentSize.height - size.height, size.width, size.height);
-    newFrame = CGRectOffset(oldFrame, 0.0, size.height);    
-  }
-  
-  [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
-  
-  self.frame = oldFrame;
-  [UIView beginAnimations:nil context:NULL];
-  [UIView setAnimationDuration:0.5];
-  self.alpha = newAlpha;
-  self.frame = newFrame;
-  [UIView commitAnimations];    
-  
-  [[UIApplication sharedApplication] endIgnoringInteractionEvents];
-}
-
 - (void)setNumberOfPages:(NSUInteger)newNumberOfPages {
   if (newNumberOfPages != numberOfPages) {
     numberOfPages = newNumberOfPages;
@@ -176,10 +142,10 @@
   [self repositionContent];
 }
 
-- (void)setDataSource:(id<KGPagedDocControlImageStore>)newDataSource {
+- (void)setDataSource:(id<KGDocumentImageStore>)newDataSource {
   if (newDataSource != dataSource) {
     dataSource = newDataSource;
-    [imageStore removeAllImages];
+    self.imageStore = [[[KGInMemoryImageStore alloc] init] autorelease];
     [self redrawContent];
   }
 }
@@ -199,6 +165,8 @@
 // MARK: Public messages
 
 - (void)newImageForPageNumber:(NSUInteger)page orientation:(KGOrientation)orientation {
+  NSString *variant = [NSString stringWithFormat:@"%d",orientation];
+  [imageStore removeImageForPageNumber:page variant:variant];
   [self imageForPageNumber:page orientation:orientation];
   if (orientation == pageOrientation) {
     [self redrawContent]; // TODO: only redraw if page is in view
@@ -206,13 +174,14 @@
 }
 
 - (UIImage*)imageForPageNumber:(NSUInteger)page orientation:(KGOrientation)orientation {
-  UIImage *image = [imageStore imageForPageNumber:page orientation:orientation];
+  NSString *variant = [NSString stringWithFormat:@"%d",orientation];
+  UIImage *image = [imageStore imageForPageNumber:page variant:variant];
   if (!image) {
     UIImage *fullImage;
-    if ([dataSource respondsToSelector:@selector(imageForPageNumber:orientation:withOptions:)])
-      fullImage = [dataSource imageForPageNumber:page orientation:orientation withOptions:KGImageStoreTemporary];
+    if ([dataSource respondsToSelector:@selector(imageForPageNumber:variant:withOptions:)])
+      fullImage = [dataSource imageForPageNumber:page variant:variant withOptions:KGImageStoreTemporary];
     else
-      fullImage = [dataSource imageForPageNumber:page orientation:orientation];
+      fullImage = [dataSource imageForPageNumber:page variant:variant];
     if (fullImage) {
       CGSize size = (orientation == KGPortraitOrientation ? portraitSize : landscapeSize);
       size.width *= retinaScale;
@@ -221,7 +190,7 @@
       [fullImage drawInRect:CGRectMake(0, 0, size.width, size.height)];
       image = UIGraphicsGetImageFromCurrentImageContext();
       UIGraphicsEndImageContext();
-      if (image) [imageStore saveImage:image forPageNumber:page orientation:orientation];
+      if (image) [imageStore saveImage:image forPageNumber:page variant:variant];
     }
   }
   return image ? image : placeholderImage;
@@ -251,12 +220,8 @@
 // MARK: Private messages
 
 - (void)initControl {
-  self.alpha = 0.0; // start inactive
-
   retinaScale = [UIScreen mainScreen].scale;
 
-  self.imageStore = [[[KGInMemoryImageStore alloc] init] autorelease];
-  
   self.scrollView = [[[UIScrollView alloc] initWithFrame:self.bounds] autorelease];
   scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   scrollView.backgroundColor = [UIColor clearColor];
@@ -329,7 +294,8 @@
 
 - (void)preloadImageForPageNumber:(NSInteger)page {
   if (page >= 0 && page < [self numberOfPages]) {
-    if (![imageStore hasImageForPageNumber:page orientation:pageOrientation])
+    NSString *variant = [NSString stringWithFormat:@"%d",pageOrientation];
+    if (![imageStore hasImageForPageNumber:page variant:variant])
       [self imageForPageNumber:page orientation:pageOrientation];
   }
 }

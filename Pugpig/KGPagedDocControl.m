@@ -33,20 +33,28 @@
 @implementation KGPagedDocControl
 
 @dynamic delegate;
+@dynamic paneManager;
 @dynamic imageStore;
 @dynamic dataSource;
 @dynamic navigator;
+@dynamic numberOfPanes;
+@dynamic numberOfPages;
+@dynamic paneNumber;
 @dynamic pageNumber;
+@dynamic fractionalPaneNumber;
 @dynamic fractionalPageNumber;
-@dynamic portraitSize;
-@dynamic landscapeSize;  
+@dynamic currentPageView;
 @dynamic scale;
 @dynamic scrollEnabled;
 @dynamic mediaPlaybackRequiresUserAction;
+@dynamic linksOpenInExternalBrowser;
 @dynamic bounces;
 
 + (id)alloc {
-  return [KGPagedDocControlImplementation alloc];
+  if ([self isEqual:[KGPagedDocControl class]])
+    return (KGPagedDocControl*)[KGPagedDocControlImplementation alloc];
+  else
+    return [super alloc];
 }
 
 - (void)hideUntilInitialised {
@@ -57,8 +65,51 @@
   // implemented in KGPagedDocControlImplementation
 }
 
+- (void)setPaneNumber:(NSUInteger)newPaneNumber animated:(BOOL)animated {
+  // implemented in KGPagedDocControlImplementation
+}
+
 - (void)setPageNumber:(NSUInteger)newPageNumber animated:(BOOL)animated {
   // implemented in KGPagedDocControlImplementation
+}
+
+- (BOOL)moveToPageURL:(NSURL*)url animated:(BOOL)animated {
+  // implemented in KGPagedDocControlImplementation
+  return NO;
+}
+
+- (id)savePosition {
+  // implemented in KGPagedDocControlImplementation
+  return nil;
+}
+
+- (void)restorePosition:(id)position {
+  // implemented in KGPagedDocControlImplementation
+}
+
+- (void)refreshCurrentPage {
+  // implemented in KGPagedDocControlImplementation
+}
+
+- (void)refreshContentSize {
+  // implemented in KGPagedDocControlImplementation
+}
+
+- (void)startSnapshotting {
+  // implemented in KGPagedDocControlImplementation
+}
+
+- (void)stopSnapshotting {
+  // implemented in KGPagedDocControlImplementation
+}
+
+- (NSString*)stringByEvaluatingScript:(NSString*)script {
+  // implemented in KGPagedDocControlImplementation
+  return nil;
+}
+
+- (KGOrientation)orientationForSize:(CGSize)size {
+  return (size.width > size.height ? KGLandscapeOrientation : KGPortraitOrientation);
 }
 
 @end

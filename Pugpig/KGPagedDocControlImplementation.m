@@ -29,8 +29,11 @@
 
 #import "KGPagedDocControlImplementation.h"
 #import "KGInMemoryImageStore.h"
+#import "KGSinglePanePartitioning.h"
 #import "KGCappedScrollView.h"
 #import "KGStartupView.h"
+#import "KGBrowserViewController.h"
+#import "KGControlEvents.h"
 #import "UIWebView+KGAdditions.h"
 
 //==============================================================================
@@ -43,41 +46,50 @@
 @property (nonatomic, retain) UIWebView *mainWebView, *backgroundWebView;
 @property (nonatomic, retain) UIImageView *leftImageView, *rightImageView, *centreImageView;
 @property (nonatomic, retain) UIActivityIndicatorView *leftBusyView, *rightBusyView, *centreBusyView;
+@property (nonatomic, assign) BOOL delayedLayoutChange;
+@property (nonatomic, copy) NSString *targetFragment;
+@property (nonatomic, assign) NSUInteger targetFragmentPage;
 
 - (void)initControl;
-- (void)calculateDefaultSizes;
-- (KGOrientation)orientationForSize:(CGSize)size;
 - (BOOL)interfaceOrientationMatchesOrientation:(KGOrientation)orientation;
-- (CGRect)frameForPageNumber:(NSUInteger)pageNumber;
+- (void)updateFractionalPosition;
+- (CGRect)frameForPaneNumber:(NSUInteger)pane;
+- (CGRect)frameForPageNumber:(NSUInteger)page;
 - (void)createScrollView;
-- (void)positionScrollViewContent;
+- (void)repositionAfterLayoutChange;
 - (UIImageView*)createImageView;
 - (UIActivityIndicatorView*)createBusyView;
-- (void)positionImageViewsCentredOnPage:(NSInteger)page;
-- (void)positionImageView:(UIImageView*)imageView andBusyView:(UIActivityIndicatorView*)busyView forPage:(NSInteger)pageNumber;
+- (void)positionImageViewsCentredOnPane:(NSInteger)pane;
+- (void)positionImageView:(UIImageView*)imageView andBusyView:(UIActivityIndicatorView*)busyView forPane:(NSInteger)pane;
 - (UIWebView*)createWebViewWithSize:(CGSize)size;
 - (void)stopWebView:(UIWebView*)webView;
+- (void)initWebView:(UIWebView*)webView withDataSourcePageNumber:(NSUInteger)page foreground:(BOOL)foreground;
 - (void)webView:(UIWebView*)webView didFinish:(KGPagedDocFinishedMask)finished;
+- (void)webView:(UIWebView*)webView didFinishPageNumber:(NSUInteger)page pageSize:(CGSize)size foreground:(BOOL)foreground;
 - (BOOL)webViewHasJavascriptDelay:(UIWebView*)webView;
-- (void)takeSnapshotForWebView:(UIWebView*)webView;
+- (NSString*)metaTag:(NSString*)tagName forWebView:(UIWebView*)webView;
 - (void)loadMainWebView;
 - (void)showMainWebView;
-- (void)startBackgroundLoadAfterDelay:(CGFloat)delay;
-- (void)cancelBackgroundLoad;
+- (void)callbackMainWebViewAfterSnapshot;
+- (void)scrollMainWebViewToFragment:(NSString*)fragment;
+- (void)setMainWebViewFragment:(NSString*)fragment;
+- (void)moveToPaneWithFragment:(NSString*)fragment;
+- (void)startSnapshottingAfterDelay:(CGFloat)delay;
+- (void)stopSnapshottingAndRestartAfterDelay:(CGFloat)delay;
 - (void)loadBackgroundWebViews;
 - (BOOL)loadBackgroundWebViewsWithOrientation:(KGOrientation)orientation size:(CGSize)size;
 - (BOOL)loadBackgroundWebViewsForPageNumber:(NSInteger)page withOrientation:(KGOrientation)orientation size:(CGSize)size;
-- (void)toggleNavigator:(UITapGestureRecognizer *)recognizer;
-- (void)updateNavigatorOrientation;
 - (void)updateNavigatorDataSource;
 - (void)navigatorPageChanged;
-- (void)preloadImagesForPageNumber:(NSUInteger)pageNumber;
-- (void)preloadImageForPageNumber:(NSInteger)pageNumber orientation:(KGOrientation)orientation;
+- (void)preloadImagesForPane:(NSUInteger)pane;
+- (void)preloadImageForPane:(NSInteger)pane inRange:(NSRange)range;
 - (void)startupUpdateProgress:(BOOL)afterSnapshot;
-- (NSUInteger)startupPagesIntialised;
-- (NSUInteger)numberOfPages;
-- (NSURL*)urlForPageNumber:(NSUInteger)pageNumber;
-- (NSInteger)pageNumberForURL:(NSURL*)url;
+- (NSUInteger)startupPagesInitialised;
+- (UIView*)isSelfOrChildFirstResponder:(UIView*)rootView;
+- (UIViewController*)firstAvailableViewControllerForView:(UIView*)view;
+- (void)sendActionsForControlEvent:(KGControlEvents)event from:(id)sender;
+- (BOOL)reportDidClickLink:(NSURL*)URL;
+- (void)reportDidExecuteCommand:(NSURL*)URL;
 
 @end
 
@@ -87,15 +99,21 @@
 @implementation KGPagedDocControlImplementation
 
 @synthesize delegate;
+@synthesize paneManager;
 @synthesize imageStore;
 @synthesize dataSource;
 @synthesize navigator;
+@dynamic numberOfPanes;
+@synthesize numberOfPages;
+@synthesize paneNumber;
 @synthesize pageNumber;
-@dynamic fractionalPageNumber;
-@synthesize portraitSize, landscapeSize;
+@synthesize fractionalPaneNumber;
+@synthesize fractionalPageNumber;
+@synthesize currentPageView;
 @synthesize scale;
 @synthesize scrollEnabled;
 @synthesize mediaPlaybackRequiresUserAction;
+@synthesize linksOpenInExternalBrowser;
 @dynamic bounces;
 
 @synthesize startupView;
@@ -103,6 +121,9 @@
 @synthesize mainWebView, backgroundWebView;
 @synthesize leftImageView, rightImageView, centreImageView;
 @synthesize leftBusyView, rightBusyView, centreBusyView;
+@synthesize delayedLayoutChange;
+@synthesize targetFragment;
+@synthesize targetFragmentPage;
 
 //------------------------------------------------------------------------------
 // MARK: NSObject/UIView messages
@@ -124,6 +145,7 @@
 }
 
 - (void)dealloc {
+  [paneManager release];
   [imageStore release];
   [dataSource release];
   [navigator release];
@@ -138,6 +160,7 @@
   [leftBusyView release];
   [rightBusyView release];
   [centreBusyView release];
+  [targetFragment release];
   
   [super dealloc];
 }
@@ -146,20 +169,10 @@
   [super layoutSubviews];
   if (!CGSizeEqualToSize(lastLayoutSize, self.bounds.size)) {
     lastLayoutSize = self.bounds.size;
-    
-    leftImageView.tag = rightImageView.tag = centreImageView.tag = -1;
-    
-    [self positionImageViewsCentredOnPage:pageNumber];
-    [self positionScrollViewContent];
-    [self preloadImagesForPageNumber:pageNumber];
-    [self updateNavigatorOrientation];     
-
-    // If we start the background load immediately it sometimes doesn't
-    // snapshot properly for the first page.
-    [self startBackgroundLoadAfterDelay:0.5];
-    
-    if (mainFinishedMask == KGPDFinishedEverything)
-      [self showMainWebView];
+    if ([scrollView isDecelerating] || [scrollView isDragging])
+      delayedLayoutChange = YES;
+    else  
+      [self repositionAfterLayoutChange];
   }
 }
 
@@ -171,32 +184,45 @@
 }
 
 - (void)hideUntilInitialised:(NSUInteger)requiredPages {
-  startupRequiredPages = MIN(requiredPages, [self numberOfPages]);
-  if ([self startupPagesIntialised] < startupRequiredPages)
+  startupRequiredPages = MIN(requiredPages, numberOfPages);
+  if ([self startupPagesInitialised] < startupRequiredPages)
     self.startupView = [[[KGStartupView alloc] init] autorelease];
 }
 
-- (void)setImageStore:(id<KGPagedDocControlImageStore>)newImageStore {
+- (void)setImageStore:(id<KGDocumentImageStore>)newImageStore {
   if (imageStore != newImageStore) {
     [imageStore release];
     imageStore = [newImageStore retain];
+    
+    [paneManager setImageStore:imageStore];
     
     [self updateNavigatorDataSource];
     // TODO: rebuild cache if datasource already set?
   }
 }
 
-- (void)setDataSource:(id<KGPagedDocControlDataSource>)newDataSource {
+- (void)setDataSource:(id<KGDocumentDataSource>)newDataSource {
   if (dataSource != newDataSource) {
     [dataSource release];
     dataSource = [newDataSource retain];
+    numberOfPages = [dataSource numberOfPages];
     
-    [imageStore removeAllImages];
+    [paneManager setDataSource:dataSource];
+    
+    paneNumber = -1;
+    pageNumber = -1;
+    mainWebView.tag = -1;
     
     [self updateNavigatorDataSource];
-    [self positionScrollViewContent];
-    [self setPageNumber:pageNumber];
-    [self startBackgroundLoadAfterDelay:0];
+    [self refreshContentSize];
+    [self stopSnapshotting];
+    [self startSnapshotting];
+    
+    // Note that we no longer automatically set the page number to zero here.
+    // It's up to the calling code to explicitly set the page number after 
+    // setting the datasource. This avoids the page number being set twice 
+    // (which can be fairly expensive) when the caller wants to start on a 
+    // page other than zero.
   }
 }
 
@@ -208,8 +234,67 @@
     [navigator addTarget:self action:@selector(navigatorPageChanged) forControlEvents:UIControlEventValueChanged];
     
     [self updateNavigatorDataSource];
-    [self updateNavigatorOrientation];     
+    
+    navigator.pageOrientation = currentOrientation;
+    navigator.fractionalPageNumber = fractionalPageNumber;
   }
+}
+
+- (NSUInteger)numberOfPanes {
+  return [paneManager numberOfPanesInOrientation:currentOrientation];
+}
+
+- (void)setPaneNumber:(NSUInteger)newPaneNumber {
+  [self setPaneNumber:newPaneNumber animated:NO];
+}
+
+- (void)setPaneNumber:(NSUInteger)newPaneNumber animated:(BOOL)animated {
+  NSUInteger newPageNumber = [paneManager pageForPaneNumber:newPaneNumber orientation:currentOrientation];
+  if (newPageNumber == pageNumber && newPaneNumber == paneNumber) return;
+  
+  if (newPageNumber != targetFragmentPage) {
+    [self setTargetFragment:nil];
+    [self setTargetFragmentPage:0];
+  }
+  
+  if (animated) {
+    // If the main web view is offscreen (i.e. it's still loading), we stop
+    // it and delete it so that it doesn't slow down the animation.
+    if (mainWebView.frame.origin.y > 1024 && newPageNumber != pageNumber) {
+      [self stopWebView:mainWebView];
+      [mainWebView removeFromSuperview];
+      self.currentPageView = nil;
+      self.mainWebView = nil;
+    }
+    // Also cancel any background loads temporarily.
+    [self stopSnapshottingAndRestartAfterDelay:1.0];
+    // We return after initiating the scroll animation since setPaneNumber
+    // will be called again once the animation is complete.
+    CGRect rect = [self frameForPaneNumber:newPaneNumber];
+    [scrollView scrollRectToVisible:rect animated:YES];
+    return;
+  }
+
+  if (paneNumber != newPaneNumber) {
+    [self willChangeValueForKey:@"paneNumber"];
+    paneNumber = newPaneNumber;
+    [self didChangeValueForKey:@"paneNumber"];
+    CGRect rect = [self frameForPaneNumber:newPaneNumber];
+    [scrollView scrollRectToVisible:rect animated:NO];
+    [self preloadImagesForPane:paneNumber];
+  }
+    
+  if (pageNumber != newPageNumber) {
+    [self willChangeValueForKey:@"pageNumber"];
+    pageNumber = newPageNumber;
+    [self didChangeValueForKey:@"pageNumber"];
+    navigator.pageNumber = newPageNumber;
+    [self loadMainWebView];
+  }
+  
+  [self positionImageViewsCentredOnPane:paneNumber];
+  [self showMainWebView];
+  [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
 - (void)setPageNumber:(NSUInteger)newPageNumber {
@@ -217,35 +302,17 @@
 }
 
 - (void)setPageNumber:(NSUInteger)newPageNumber animated:(BOOL)animated {
-  if (animated) {
-    // If the main web view is offscreen (i.e. it's still loading), we stop
-    // it and delete it so that it doesn't slow down the animation.
-    if (mainWebView.frame.origin.y > 1024) {
-      [self stopWebView:mainWebView];
-      [mainWebView removeFromSuperview];
-      self.mainWebView = nil;
-    }
-    // Also cancel any background loads temporarily.
-    [self cancelBackgroundLoad];
-  }
-  else {
-    [self preloadImagesForPageNumber:newPageNumber];
-    
-    pageNumber = newPageNumber;
-    navigator.pageNumber = newPageNumber;
-    [self sendActionsForControlEvents:UIControlEventValueChanged];
-    
-    [self positionImageViewsCentredOnPage:pageNumber];    
-    [self loadMainWebView];
-  }
-  
-  CGRect rect = [self frameForPageNumber:newPageNumber];
-  [scrollView scrollRectToVisible:rect animated:animated];
+  NSUInteger newPaneNumber = [paneManager paneForPageNumber:newPageNumber orientation:currentOrientation];
+  [self setPaneNumber:newPaneNumber animated:animated];
 }
 
-- (CGFloat)fractionalPageNumber {
-  if (scrollView.contentSize.width == 0 || dataSource == nil) return 0;
-  return scrollView.contentOffset.x / scrollView.contentSize.width * [self numberOfPages];
+- (BOOL)moveToPageURL:(NSURL*)url animated:(BOOL)animated {
+  NSInteger page = [dataSource pageNumberForURL:url];
+  if (page == -1) return NO;
+  [self setTargetFragment:[url fragment]];
+  [self setTargetFragmentPage:page];
+  [self setPageNumber:page animated:animated];
+  return YES;
 }
 
 - (void)setScrollEnabled:(BOOL)newScrollEnabled {
@@ -282,36 +349,119 @@
   [mainWebView setBackgroundColor:backgroundColor];
 }
 
+- (id)savePosition {
+  return [paneManager persistentStateForPaneNumber:paneNumber orientation:currentOrientation];
+}
+
+- (void)restorePosition:(id)position {
+  if (position) [self setPaneNumber:[paneManager paneFromPersistentState:position orientation:currentOrientation]];
+}
+
+- (void)refreshCurrentPage {
+  // TODO: see if we can make this refresh smoother and also
+  // preserve scroll position if possible
+  self.mainWebView.tag = -1;
+  [self loadMainWebView];
+}
+
+- (void)refreshContentSize {
+  NSUInteger panes = [self numberOfPanes];
+  if (panes) {
+    CGSize size = self.bounds.size;
+    [scrollView setContentSize:CGSizeMake(panes * size.width, size.height)];
+    [self sendActionsForControlEvent:KGControlEventContentSizeChanged from:self];
+  }
+}
+
+- (void)startSnapshotting {
+  // If we start the background load immediately it sometimes doesn't
+  // snapshot properly for the first page.
+  [self startSnapshottingAfterDelay:0.5];
+}
+
+- (void)stopSnapshotting {
+  if (backgroundBusyLoading) {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(loadBackgroundWebViews) object:nil];
+    
+    [self stopWebView:backgroundWebView];
+    [backgroundWebView removeFromSuperview];
+    self.backgroundWebView = nil;
+    
+    backgroundBusyLoading = NO;
+  }  
+}
+
+- (NSString*)stringByEvaluatingScript:(NSString*)script {
+  return [mainWebView stringByEvaluatingJavaScriptFromString:script];
+}
+
+//------------------------------------------------------------------------------
+// MARK: UIResponder messages
+
+// TODO: do we need to handle the other responder messages so that this
+// makes proper sense?
+
+- (BOOL)isFirstResponder {
+  return mainWebView && [self isSelfOrChildFirstResponder:mainWebView];
+}
+
 //------------------------------------------------------------------------------
 // MARK: UIScrollViewDelegate messages
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)sender {
   [scrollView setMaxDelta:100.0];
   // Cancel any background loads temporarily so we have smoother dragging.
-  [self cancelBackgroundLoad];
+  [self stopSnapshottingAndRestartAfterDelay:1.0];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)sender {
-  navigator.fractionalPageNumber = self.fractionalPageNumber;
+  [self updateFractionalPosition];
   
-  CGFloat w = scrollView.bounds.size.width;
-  NSInteger newPageNumber = floor((scrollView.contentOffset.x + w/2)/w);
+  navigator.fractionalPageNumber = fractionalPageNumber;
+  NSInteger newPaneNumber = round(fractionalPaneNumber);
   
-  [self positionImageViewsCentredOnPage:newPageNumber];
+  [self positionImageViewsCentredOnPane:newPaneNumber];
+}
+
+- (void)scrollViewWillBeginDecelerating:(UIScrollView *)sender {
+  if (delayedLayoutChange) {
+    // This cancels the deceleration, since the page is ultimately going
+    // to be repositioned once the delayed layout change kicks in.
+    if (scrollView.contentOffset.x >= 0)
+      [sender setContentOffset:sender.contentOffset animated:NO];
+  }  
 }
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)sender {
+  [self updateFractionalPosition];
+  navigator.fractionalPageNumber = fractionalPageNumber;
+  NSInteger destPaneNum = round(fractionalPaneNumber);
+  
   [scrollView setMaxDelta:0.0];
-  navigator.fractionalPageNumber = self.fractionalPageNumber;
-  NSInteger destPageNum = floor(scrollView.contentOffset.x / scrollView.frame.size.width);    
-  [self setPageNumber:destPageNum];
+  if (delayedLayoutChange) {
+    // We can't reposition the scroll view from within the didEndDeclerating
+    // callback, so we need to add this code to the dispatch queue to be run
+    // later.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      // We set the pane number here so that the position that is restored
+      // after the layout change is closer to where we currently are rather
+      // than the initial start point.
+      paneNumber = destPaneNum;
+      [self repositionAfterLayoutChange];
+      delayedLayoutChange = NO;
+    });    
+  }  
+  else {  
+    [self setPaneNumber:destPaneNum];
+  }
 }
 
 - (void)scrollViewDidEndScrollingAnimation:(UIScrollView *)sender {
   [scrollView setMaxDelta:0.0];
-  navigator.fractionalPageNumber = self.fractionalPageNumber;
-  NSInteger destPageNum = floor(scrollView.contentOffset.x / scrollView.frame.size.width);    
-  [self setPageNumber:destPageNum];
+  [self updateFractionalPosition];
+  navigator.fractionalPageNumber = fractionalPageNumber;
+  NSInteger destPaneNum = round(fractionalPaneNumber);
+  [self setPaneNumber:destPaneNum];
 }
 
 //------------------------------------------------------------------------------
@@ -320,22 +470,56 @@
 - (BOOL)webView:(UIWebView*)webView shouldStartLoadWithRequest:(NSURLRequest*)request navigationType:(UIWebViewNavigationType)navigationType {
   NSURL *URL = [request URL];
   BOOL shouldStart = YES;
-  BOOL isPlumbSchema = [[URL scheme] isEqualToString:@"pugpig"];
+  NSString *scheme = [URL scheme];
+  BOOL isPlumbSchema = [scheme isEqualToString:@"pugpig"];
   if (isPlumbSchema) {
     NSString *plumbCommand = [URL host];
     if ([plumbCommand isEqualToString:@"onPageReady"])
       [self webView:webView didFinish:KGPDFinishedJS];
     else
-      [delegate document:(KGPagedDocControl*)self didExecuteCommand:URL];
+      [self reportDidExecuteCommand:URL];
     shouldStart = NO;
   }
-  else if (webView == mainWebView && mainFinishedMask != KGPDFinishedNothing) {
-    NSInteger page = [self pageNumberForURL:URL];
-    if (page != -1)
-      [self setPageNumber:page animated:YES];
-    else
-      [[UIApplication sharedApplication] openURL:URL];
-    shouldStart = NO;
+  else if (webView == mainWebView && webView.request != nil) {
+    // At this point, we want to be able to trap any clicked links so we can 
+    // potentially open them in our internal browser, or an external instance 
+    // of Safari. In most cases we just need to look for requests with the 
+    // "LinkClicked" navigation type but this doesn't take into account clicks 
+    // that are initiated via javascript which show up as the "Other" navigation 
+    // type, so we need to intercept those too. However, we can't just intercept
+    // all "Other" requests, because that would included IFRAMEs which we 
+    // definitely don't want to intercept. Our solution is to check the web 
+    // view's isLoading property: if it's still loading, we assume the request 
+    // is for an IFRAME; if not, we treat it as a clicked link.
+    
+    // TODO: Maybe we can do a better job of this test using some combination 
+    // of webView.request vs request and request.mainDocumentURL vs URL.
+    BOOL clickNavType = (navigationType == UIWebViewNavigationTypeLinkClicked);
+    BOOL otherNavType = (navigationType == UIWebViewNavigationTypeOther);
+    if (clickNavType || (otherNavType && ![webView isLoading])) {
+      // First give the delegate a chance to handle the link
+      if ([self reportDidClickLink:URL])
+        shouldStart = NO;
+      // If it's an internal page, jump to that page number.
+      else if ([self moveToPageURL:URL animated:YES])
+        shouldStart = NO;
+      // Otherwise open the link internally or externally
+      else {
+        // Schemes that aren't supported by our browser always open externally
+        if (linksOpenInExternalBrowser || ![KGBrowserViewController isSupportedScheme:scheme])
+          [[UIApplication sharedApplication] openURL:URL];
+        else {
+          KGBrowserViewController *bvc = [[[KGBrowserViewController alloc] init] autorelease];
+          [bvc setModalPresentationStyle:UIModalPresentationFullScreen];
+          [bvc setBackgroundColor:[UIColor blackColor]];
+          [bvc setScalesPageToFit:YES];
+          [bvc loadURL:URL];
+          UIViewController *parentvc = [self firstAvailableViewControllerForView:self];
+          [parentvc presentModalViewController:bvc animated:YES];
+        }  
+        shouldStart = NO;
+      }
+    } 
   }
   return shouldStart;
 }
@@ -360,11 +544,24 @@
 }
 
 //------------------------------------------------------------------------------
+// MARK: NSKeyValueObserving customization messages
+
++ (BOOL)automaticallyNotifiesObserversForKey:(NSString *)key {
+  if ([key isEqualToString:@"paneNumber"] || [key isEqualToString:@"pageNumber"])
+    return NO;
+  else
+    return [super automaticallyNotifiesObserversForKey:key];
+}    
+
+//------------------------------------------------------------------------------
 // MARK: Private messages
 
 - (void)initControl {
-  [self calculateDefaultSizes];
+  lastLayoutSize = self.bounds.size;
+  
   [self createScrollView];
+
+  self.paneManager = [[[KGSinglePanePartitioning alloc] init] autorelease];
   
   mainFinishedMask = KGPDFinishedEverything;
   backgroundFinishedMask = KGPDFinishedEverything;
@@ -379,41 +576,38 @@
   self.leftBusyView = [self createBusyView];
   self.rightBusyView = [self createBusyView];
   self.centreBusyView = [self createBusyView];
-  
-  UITapGestureRecognizer *doubleTap = [[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleNavigator:)] autorelease];
-  doubleTap.delegate = self;
-	doubleTap.numberOfTapsRequired = 2;
-	[self addGestureRecognizer:doubleTap];
-}
 
-- (void)calculateDefaultSizes {
-  // TODO: make this take into account autosizing information
-  CGSize size = self.bounds.size;
-  if ([self orientationForSize:size] == KGLandscapeOrientation) {
-    landscapeSize = size;
-    portraitSize = CGSizeMake(size.height, size.width);
-  }
-  else {
-    portraitSize = size;
-    landscapeSize = CGSizeMake(size.height, size.width);
-  }
-}
-
-- (KGOrientation)orientationForSize:(CGSize)size {
-  return (size.width > size.height ? KGLandscapeOrientation : KGPortraitOrientation);
+  currentOrientation = [self orientationForSize:self.bounds.size];  
 }
 
 - (BOOL)interfaceOrientationMatchesOrientation:(KGOrientation)orientation {
   UIInterfaceOrientation interfaceOrientation = [[UIApplication sharedApplication] statusBarOrientation];
   return (
-    UIInterfaceOrientationIsLandscape(interfaceOrientation) && orientation == KGLandscapeOrientation ||
-    UIInterfaceOrientationIsPortrait(interfaceOrientation) && orientation == KGPortraitOrientation
+    (UIInterfaceOrientationIsLandscape(interfaceOrientation) && orientation == KGLandscapeOrientation) ||
+    (UIInterfaceOrientationIsPortrait(interfaceOrientation) && orientation == KGPortraitOrientation)
   );
+}
+
+- (void)updateFractionalPosition {
+  NSUInteger panes = [self numberOfPanes];
+  if (scrollView.contentSize.width == 0 || panes == 0) {
+    self.fractionalPaneNumber = 0;
+    self.fractionalPageNumber = 0;
+  }  
+  else {  
+    self.fractionalPaneNumber = scrollView.contentOffset.x / scrollView.contentSize.width * panes;
+    self.fractionalPageNumber = [paneManager fractionalPageFromPane:fractionalPaneNumber orientation:currentOrientation];
+  }
+}
+
+- (CGRect)frameForPaneNumber:(NSUInteger)pane {
+  CGSize size = self.bounds.size;
+  return CGRectMake(pane*size.width, 0, size.width, size.height);
 }
 
 - (CGRect)frameForPageNumber:(NSUInteger)page {
   CGSize size = self.bounds.size;
-  return CGRectMake(page*size.width, 0, size.width, size.height);
+  return [paneManager frameForPageNumber:page pageSize:size orientation:currentOrientation];
 }
 
 - (void)createScrollView {
@@ -431,18 +625,31 @@
   scrollView.backgroundColor = [self backgroundColor];
   scrollView.opaque = [self isOpaque];
   
-  [self addSubview:scrollView];
+  scrollView.scrollsToTop = NO;
   
-  [self positionScrollViewContent];
+  [self addSubview:scrollView];
 }
 
-- (void)positionScrollViewContent {
-  if (dataSource) {
-    CGSize size = self.bounds.size;
-    NSUInteger pages = [self numberOfPages];
-    [scrollView setContentOffset:CGPointMake(pageNumber * size.width, 0) animated:NO];
-    [scrollView setContentSize:CGSizeMake(pages * size.width, size.height)];
-  }
+- (void)repositionAfterLayoutChange {
+  id position = [self savePosition];
+  currentOrientation = [self orientationForSize:lastLayoutSize];
+  navigator.pageOrientation = currentOrientation;
+  paneNumber = -1;
+
+  if (mainFinishedMask == KGPDFinishedEverything && mainWebView.tag != -1) {
+    [paneManager layoutWebView:mainWebView pageSize:lastLayoutSize orientation:currentOrientation];
+    [self sendActionsForControlEvent:KGControlEventContentLayoutChanged from:self];
+  }  
+
+  [self refreshContentSize];
+  [self restorePosition:position];
+  
+  leftImageView.tag = rightImageView.tag = centreImageView.tag = -1;
+  
+  [self stopSnapshotting];
+  [self startSnapshotting];
+  
+  [self showMainWebView];
 }
 
 - (UIImageView*)createImageView {
@@ -457,43 +664,49 @@
   busyView.tag = -1;
   busyView.opaque = NO;
   busyView.activityIndicatorViewStyle = UIActivityIndicatorViewStyleWhiteLarge;
+  if ([busyView respondsToSelector:@selector(setColor:)]) {
+    // the default UIActivityIndicatorViewStyleWhiteLarge is invisible against
+    // a white background on iOS5. Fortunately we can now set the color.
+    // TODO: something a bit more flexible here - what if the web page background
+    // is lightGrayColor? We'd be in the exact same position.
+    [(id)busyView setColor:[UIColor lightGrayColor]];
+  }
   [scrollView addSubview:busyView];
   return [busyView autorelease];
 }
 
-- (void)positionImageViewsCentredOnPage:(NSInteger)page {
-  [self positionImageView:centreImageView andBusyView:centreBusyView forPage:page];
-  [self positionImageView:leftImageView andBusyView:leftBusyView forPage:page - 1];
-  [self positionImageView:rightImageView andBusyView:rightBusyView forPage:page + 1];       
+- (void)positionImageViewsCentredOnPane:(NSInteger)pane {
+  [self positionImageView:centreImageView andBusyView:centreBusyView forPane:pane];
+  [self positionImageView:leftImageView andBusyView:leftBusyView forPane:pane - 1];
+  [self positionImageView:rightImageView andBusyView:rightBusyView forPane:pane + 1];
 }
 
-- (void)positionImageView:(UIImageView*)imageView andBusyView:(UIActivityIndicatorView*)busyView forPage:(NSInteger)page {
-  if (page < 0 || page >= [self numberOfPages]) {
+- (void)positionImageView:(UIImageView*)imageView andBusyView:(UIActivityIndicatorView*)busyView forPane:(NSInteger)pane {
+  if (pane < 0 || pane >= [self numberOfPanes]) {
     imageView.hidden = YES;
     busyView.hidden = YES;
   }
   else {
-    // TODO: optimize this when imageView.tag == page
-    KGOrientation orientation = [self orientationForSize:self.bounds.size];
-    UIImage *pageImage = [imageStore imageForPageNumber:page orientation:orientation];
-    CGRect pageFrame = [self frameForPageNumber:page];
+    // TODO: optimize this when imageView.tag == pane
+    UIImage *paneImage = [paneManager snapshotForPaneNumber:pane orientation:currentOrientation withOptions:KGImageStoreFetch];
+    CGRect paneFrame = [self frameForPaneNumber:pane];
     
-    if (pageImage) {
-      imageView.image = pageImage;
-      imageView.frame = pageFrame;
-      imageView.tag = page;
+    if (paneImage) {
+      imageView.image = paneImage;
+      imageView.frame = paneFrame;
+      imageView.tag = pane;
       imageView.hidden = NO;
       busyView.hidden = YES;
       [busyView stopAnimating];
     }    
     else {
       // image isn't available yet - show a placeholder
-      CGPoint pageOrigin = pageFrame.origin;
-      CGSize pageSize = pageFrame.size;
+      CGPoint paneOrigin = paneFrame.origin;
+      CGSize paneSize = paneFrame.size;
       CGSize busySize = CGSizeMake(40, 40);
       CGRect busyFrame = CGRectMake(
-        pageOrigin.x + (pageSize.width-busySize.width)/2, 
-        pageOrigin.y + (pageSize.height-busySize.height)/2, 
+        paneOrigin.x + (paneSize.width-busySize.width)/2, 
+        paneOrigin.y + (paneSize.height-busySize.height)/2, 
         busySize.width, busySize.height
       );
       busyView.frame = busyFrame;
@@ -536,19 +749,23 @@
   webView.tag = -1;
 }
 
+- (void)initWebView:(UIWebView*)webView withDataSourcePageNumber:(NSUInteger)page foreground:(BOOL)foreground {
+  NSURL *url = [dataSource urlForPageNumber:page];
+  KGControlEvents event1 = (foreground ? KGControlEventDataSourceWillLoadForeground : KGControlEventDataSourceWillLoadBackground);
+  [self sendActionsForControlEvent:event1 from:url];
+  
+  NSString *html = [NSMutableString stringWithContentsOfURL:url usedEncoding:nil error:nil];
+  KGControlEvents event2 = (foreground ? KGControlEventDataSourceDidLoadForeground : KGControlEventDataSourceDidLoadBackground);
+  [self sendActionsForControlEvent:event2 from:html];
+  [webView loadHTMLString:html baseURL:url];
+}
+
 - (void)webView:(UIWebView*)webView didFinish:(KGPagedDocFinishedMask)finished {
   if (webView == mainWebView) {
     if (mainFinishedMask == KGPDFinishedEverything) return;
     mainFinishedMask |= finished;
     if (mainFinishedMask == KGPDFinishedEverything) {
-      mainWebView.tag = mainPageNumber;
-      [self showMainWebView];
-      
-      KGOrientation orientation = [self orientationForSize:mainSize];
-      if (![imageStore hasImageForPageNumber:mainPageNumber orientation:orientation]) {
-        [self startupUpdateProgress:NO];
-        [self performSelector:@selector(takeSnapshotForWebView:) withObject:webView afterDelay:0.0];
-      }
+      [self webView:mainWebView didFinishPageNumber:mainPageNumber pageSize:mainSize foreground:YES];
     }
   }
   
@@ -556,69 +773,76 @@
     if (backgroundFinishedMask == KGPDFinishedEverything) return;
     backgroundFinishedMask |= finished;
     if (backgroundFinishedMask == KGPDFinishedEverything) {
-      backgroundWebView.tag = backgroundPageNumber;
-      backgroundWebView.frame = CGRectMake(9999, 9999, backgroundSize.width, backgroundSize.height);
-      
-      KGOrientation orientation = [self orientationForSize:backgroundSize];
-      if (![imageStore hasImageForPageNumber:backgroundPageNumber orientation:orientation]) {
-        [self startupUpdateProgress:NO];
-        [self performSelector:@selector(takeSnapshotForWebView:) withObject:webView afterDelay:0.0];
-      }
-      else {
-        backgroundBusyLoading = NO;
-        [self startBackgroundLoadAfterDelay:0];
-      }
+      [self webView:backgroundWebView didFinishPageNumber:backgroundPageNumber pageSize:backgroundSize foreground:NO];
     }
   }
 }
 
+- (void)webView:(UIWebView*)webView didFinishPageNumber:(NSUInteger)page pageSize:(CGSize)size foreground:(BOOL)foreground {
+  CGRect frame = [self frameForPageNumber:page];
+  webView.frame = CGRectMake(9999, 9999, frame.size.width, frame.size.height);
+  webView.tag = page;
+  
+  [self sendActionsForControlEvent:KGControlEventContentLoadFinished from:webView];
+  
+  KGOrientation orientation = [self orientationForSize:size];
+  if ([self interfaceOrientationMatchesOrientation:orientation]) {
+    id position = [self savePosition];
+    if ([paneManager layoutWebView:webView pageSize:size orientation:orientation]) {
+      [self refreshContentSize];
+      [self restorePosition:position];
+    }
+  }  
+
+  NSString *fragment = nil;
+  if (foreground) {
+    if (targetFragmentPage == page)
+      fragment = [[targetFragment copy] autorelease];
+    [self setTargetFragment:nil];
+    [self setTargetFragmentPage:0];
+    
+    [self showMainWebView];
+    [self setMainWebViewFragment:fragment];
+    [self moveToPaneWithFragment:fragment];
+  }
+  
+  [paneManager takeSnapshotsForWebView:webView pageSize:size orientation:orientation progressHandler:^(NSUInteger offset, BOOL snapTaken){
+    if (!offset) {
+      [navigator newImageForPageNumber:page orientation:orientation];
+      if (!snapTaken) [self startupUpdateProgress:NO];
+    }  
+  } completionHandler:^(UIWebView *webView){
+    [self startupUpdateProgress:YES];
+    if (webView == mainWebView) {
+      [self scrollMainWebViewToFragment:fragment];
+      [self callbackMainWebViewAfterSnapshot];
+      [self sendActionsForControlEvent:KGControlEventContentSnapshotFinished from:webView];
+    }  
+    if (webView == backgroundWebView) {
+      backgroundBusyLoading = NO;
+      [self startSnapshottingAfterDelay:0];
+    }
+  }];
+}
+
 - (BOOL)webViewHasJavascriptDelay:(UIWebView*)webView {
-  NSString *delayCheckJS =
-  @"function getDelayMeta() {"
+  NSString *mustDelayTag = [self metaTag:@"delaySnapshotUntilReady" forWebView:webView];
+  return (mustDelayTag && [mustDelayTag localizedCaseInsensitiveCompare:@"yes"] == NSOrderedSame);    
+}
+
+- (NSString*)metaTag:(NSString*)tagName forWebView:(UIWebView*)webView {
+  NSString *getMetaTagJS = [NSString stringWithFormat:
+  @"function getMetaTag() {"
   @"  var m = document.getElementsByTagName('meta');"
   @"  for(var i in m) { "
-  @"    if(m[i].name == 'delaySnapshotUntilReady') {"
+  @"    if(m[i].name == '%@') {"
   @"      return m[i].content;"
   @"    }"
   @"  }"
   @"  return '';"
   @"}"
-  @"getDelayMeta();";
-  NSString *mustDelayTag = [webView stringByEvaluatingJavaScriptFromString:delayCheckJS];
-  return (mustDelayTag && [mustDelayTag localizedCaseInsensitiveCompare:@"yes"] == NSOrderedSame);    
-}
-
-- (void)takeSnapshotForWebView:(UIWebView*)webView {
-  CGSize size;
-  NSUInteger page;
-  
-  if (webView == mainWebView) {
-    size = mainSize;
-    page = mainPageNumber;  
-  }
-  else if (webView == backgroundWebView) {
-    size = backgroundSize;
-    page = backgroundPageNumber;
-  }
-  else
-    return;
-
-  // Check that the current interfaceOrientation still matches the 
-  // orientation at which the page was rendered otherwise the rendering 
-  // won't be completely correct and the snapshot image won't match the 
-  // final rendering.
-  KGOrientation orientation = [self orientationForSize:size];
-  if ([self interfaceOrientationMatchesOrientation:orientation]) {
-    UIImage *snapShot = [webView getImageFromView];
-    [imageStore saveImage:snapShot forPageNumber:page orientation:orientation];
-    [navigator newImageForPageNumber:page orientation:orientation];
-    [self startupUpdateProgress:YES];
-  }
-  
-  if (webView == backgroundWebView) {
-    backgroundBusyLoading = NO;
-    [self startBackgroundLoadAfterDelay:0];
-  }
+  @"getMetaTag();",tagName];
+  return [webView stringByEvaluatingJavaScriptFromString:getMetaTagJS];
 }
 
 - (void)loadMainWebView {
@@ -626,7 +850,7 @@
   if (mainWebView && mainWebView.tag == pageNumber) return;
   
   // Cancel any background loads since we want the main load to take priority
-  [self cancelBackgroundLoad];
+  [self stopSnapshottingAndRestartAfterDelay:1.0];
   
   [self stopWebView:mainWebView];
   [mainWebView removeFromSuperview];
@@ -635,14 +859,16 @@
   mainSize = self.bounds.size;
   
   self.mainWebView = [self createWebViewWithSize:mainSize];
+  mainWebView.tag = -1;
   mainWebView.backgroundColor = [self backgroundColor];
   mainWebView.opaque = [self isOpaque];
   mainWebView.scrollEnabled = scrollEnabled;
   mainWebView.mediaPlaybackRequiresUserAction = mediaPlaybackRequiresUserAction;
+  self.currentPageView = mainWebView;
   
   mainFinishedMask = KGPDFinishedNothing;
   
-  if ([self numberOfPages] == 0) {
+  if (numberOfPages == 0) {
     NSString *blank = 
       @"<html><head>"
       @"<style>body {width:60%;font-family:Helvetica;font-size:300%;padding:25% 20%;} .small {font-size:50%;margin-top:2em;}</style>"
@@ -651,10 +877,11 @@
     [mainWebView loadHTMLString:blank baseURL:nil];
   }
   else
-    [mainWebView loadRequest:[NSURLRequest requestWithURL:[self urlForPageNumber:mainPageNumber]]];
+    [self initWebView:mainWebView withDataSourcePageNumber:mainPageNumber foreground:YES];
 }
 
 - (void)showMainWebView {
+  if (mainFinishedMask != KGPDFinishedEverything) return;
   mainWebView.frame = [self frameForPageNumber:pageNumber];
   // When scrolling is enabled, we need to make sure the scroll width of the
   // web view is no wider than its view width. If not, the web view's scroller
@@ -664,7 +891,46 @@
   centreBusyView.hidden = YES;
 }
 
-- (void)startBackgroundLoadAfterDelay:(CGFloat)delay {
+- (void)callbackMainWebViewAfterSnapshot {
+  NSString *callback = [self metaTag:@"callbackWhenSnapshotFinished" forWebView:mainWebView];
+  if (callback && [callback length]) {
+    callback = [NSString stringWithFormat:@"%@();",callback];
+    [mainWebView stringByEvaluatingJavaScriptFromString:callback];
+  }  
+}
+
+- (void)scrollMainWebViewToFragment:(NSString*)fragment {
+  if (fragment && [self isScrollEnabled]) {
+    NSUInteger midPoint = self.bounds.size.height/2;
+    NSString *scrollScript = [NSString stringWithFormat:@
+      "var el = document.getElementById('%@');"
+      "var rect = el.getBoundingClientRect();"
+      "var top = rect.top + document.body.scrollTop;"
+      "top -= %d;"
+      "if (top > 0) window.scrollTo(0, top);",fragment,midPoint];
+    [self stringByEvaluatingScript:scrollScript];
+  }
+}
+
+- (void)setMainWebViewFragment:(NSString*)fragment {
+  // This adds the fragment to the web view's document.location so that
+  // any javscript on the page will be able to determine what fragment
+  // was used when navigating to the page.
+  if (fragment) {
+    NSString *historyScript = [NSString stringWithFormat:@
+      "history.replaceState(null,null,document.location.href+'#%@');",fragment];  
+    [self stringByEvaluatingScript:historyScript];
+  }
+}
+
+- (void)moveToPaneWithFragment:(NSString*)fragment {
+  if (fragment) {
+    NSInteger pane = [paneManager paneFromFragment:fragment inWebView:mainWebView pageSize:mainSize orientation:currentOrientation];
+    if (pane != -1 && pane != paneNumber) [self setPaneNumber:pane animated:NO];  
+  }
+}
+
+- (void)startSnapshottingAfterDelay:(CGFloat)delay {
   // Check whether we have already started a background load so that we don't
   // get a whole bunch of these queued up.
   if (!backgroundBusyLoading) {
@@ -673,16 +939,10 @@
   }
 }
 
-- (void)cancelBackgroundLoad {
+- (void)stopSnapshottingAndRestartAfterDelay:(CGFloat)delay {
   if (backgroundBusyLoading) {
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(loadBackgroundWebViews) object:nil];
-    
-    [self stopWebView:backgroundWebView];
-    [backgroundWebView removeFromSuperview];
-    self.backgroundWebView = nil;
-    
-    backgroundBusyLoading = NO;
-    [self startBackgroundLoadAfterDelay:1.0];
+    [self stopSnapshotting]; 
+    [self startSnapshottingAfterDelay:delay];
   }
 }
 
@@ -691,19 +951,11 @@
   // cause rendering problems which show up in the snapshot.
   if (mainFinishedMask != KGPDFinishedEverything) {
     backgroundBusyLoading = NO;
-    [self startBackgroundLoadAfterDelay:0.5];
+    [self startSnapshotting];
     return;
   }
   
-  BOOL loaded = NO;
-  
-  KGOrientation orientation = [self orientationForSize:self.bounds.size];
-  if (orientation == KGLandscapeOrientation)
-    loaded = [self loadBackgroundWebViewsWithOrientation:orientation size:landscapeSize];
-  if (orientation == KGPortraitOrientation)
-    loaded = [self loadBackgroundWebViewsWithOrientation:orientation size:portraitSize];
-  
-  backgroundBusyLoading = loaded;
+  backgroundBusyLoading = [self loadBackgroundWebViewsWithOrientation:currentOrientation size:lastLayoutSize];
 }
 
 - (BOOL)loadBackgroundWebViewsWithOrientation:(KGOrientation)orientation size:(CGSize)size {
@@ -711,17 +963,20 @@
   // otherwise the rendering won't be completely correct and the snapshot
   // image won't match the final rendering.
   if ([self interfaceOrientationMatchesOrientation:orientation])
-    for (NSInteger i = 0; i < [self numberOfPages]; i++) {
+    for (NSInteger i = 0; i < numberOfPages; i++) {
       // load pages that are closest to the current page first
       if ([self loadBackgroundWebViewsForPageNumber:pageNumber+i withOrientation:orientation size:size]) return YES;
       if ([self loadBackgroundWebViewsForPageNumber:pageNumber-i withOrientation:orientation size:size]) return YES;
     }
+  [self startupUpdateProgress:YES];
   return NO;
 }
 
 - (BOOL)loadBackgroundWebViewsForPageNumber:(NSInteger)page withOrientation:(KGOrientation)orientation size:(CGSize)size {
-  if (page < 0 || page >= [self numberOfPages]) return NO;
-  if ([imageStore hasImageForPageNumber:page orientation:orientation]) return NO;
+  if (page < 0 || page >= numberOfPages) return NO;
+  
+  // If we already have snapshots for this page, we can skip it.
+  if ([paneManager hasSnapshotsForPageNumber:page orientation:orientation]) return NO;
     
   [self stopWebView:backgroundWebView];
   [backgroundWebView removeFromSuperview];
@@ -730,29 +985,11 @@
   backgroundSize = size;
   
   self.backgroundWebView = [self createWebViewWithSize:backgroundSize];
+  backgroundWebView.tag = -1;
   
   backgroundFinishedMask = KGPDFinishedNothing;
-  [backgroundWebView loadRequest:[NSURLRequest requestWithURL:[self urlForPageNumber:backgroundPageNumber]]];
+  [self initWebView:backgroundWebView withDataSourcePageNumber:backgroundPageNumber foreground:NO];
   return YES;
-}
-
-- (void)toggleNavigator:(UITapGestureRecognizer *)recognizer {
-  if (!navigator) return;
-  
-  BOOL isVisible = [navigator isActive];
-  if (isVisible) {
-    CGPoint posInNav = [recognizer locationInView:navigator];
-    if (posInNav.y >= 0.0) {
-      return;  // double-tap within the navigator shouldn't close it
-    }
-  }
-  
-  [navigator setActive:!isVisible];
-}
-
-- (void)updateNavigatorOrientation {
-  navigator.pageOrientation = [self orientationForSize:self.bounds.size];
-  navigator.fractionalPageNumber = self.fractionalPageNumber;
 }
 
 - (void)updateNavigatorDataSource {
@@ -760,35 +997,31 @@
   [navigator setNumberOfPages:0];
   if (dataSource && imageStore) {
     [navigator setDataSource:imageStore];
-    [navigator setNumberOfPages:[self numberOfPages]];
+    [navigator setNumberOfPages:numberOfPages];
   }
 }
-
 
 - (void)navigatorPageChanged {
   [self setPageNumber:navigator.pageNumber animated:YES];
 }
 
-- (void)preloadImagesForPageNumber:(NSUInteger)page {
+- (void)preloadImagesForPane:(NSUInteger)pane {
   // For a slow image cache, if we request an image while the view is scrolling,
   // it can cause the interface to jerk. By calling this function when a scroll
   // operation has just finished, we can give the cache a chance to preload
   // images that are soon likely to be needed, without having a negative impact
   // on the scrolling.
-  KGOrientation orientation = [self orientationForSize:self.bounds.size];
+  NSUInteger panes = [self numberOfPanes];
+  NSRange range = NSMakeRange(0, panes);
   for (NSInteger i = 3; i >= 2; i--) {
-    [self preloadImageForPageNumber:page+i orientation:orientation];
-    [self preloadImageForPageNumber:page-i orientation:orientation];
+    [self preloadImageForPane:pane+i inRange:range];
+    [self preloadImageForPane:pane-i inRange:range];
   }
 }
 
-- (void)preloadImageForPageNumber:(NSInteger)page orientation:(KGOrientation)orientation {
-  if (page >= 0 && page < [self numberOfPages]) {
-    if ([imageStore respondsToSelector:@selector(imageForPageNumber:orientation:withOptions:)])
-      [imageStore imageForPageNumber:page orientation:orientation withOptions:KGImageStorePrefetch];
-    else
-      [imageStore imageForPageNumber:page orientation:orientation];
-  }
+- (void)preloadImageForPane:(NSInteger)pane inRange:(NSRange)range {
+  if (pane >= range.location && pane < range.location+range.length)
+    [paneManager snapshotForPaneNumber:pane orientation:currentOrientation withOptions:KGImageStorePrefetch];
 }
 
 - (void)startupUpdateProgress:(BOOL)afterSnapshot {
@@ -802,7 +1035,7 @@
   // the loading screen will close immediately.
   
   if (startupView) {
-    NSUInteger gotPages = [self startupPagesIntialised];
+    NSUInteger gotPages = [self startupPagesInitialised];
     
     if (gotPages >= startupRequiredPages) {
       [startupView removeFromSuperview];
@@ -816,28 +1049,58 @@
   }
 }
 
-- (NSUInteger)startupPagesIntialised {
+- (NSUInteger)startupPagesInitialised {
   NSUInteger gotPages = 0;
-  KGOrientation orientation = [self orientationForSize:self.bounds.size];
   for (NSUInteger i = 0; i < startupRequiredPages; i++)
-    if ([imageStore hasImageForPageNumber:i orientation:orientation])
+    if ([paneManager hasSnapshotsForPageNumber:i orientation:currentOrientation])
       gotPages++;
   return gotPages;
 }
 
+- (UIView*)isSelfOrChildFirstResponder:(UIView*)rootView {
+  if (rootView.isFirstResponder) return rootView;     
+
+  for (UIView *subView in rootView.subviews) {
+    UIView *firstResponder = [self isSelfOrChildFirstResponder:subView];
+    if (firstResponder != nil) return firstResponder;
+  }
+
+  return nil;
+}
+
+- (UIViewController*)firstAvailableViewControllerForView:(UIView*)view {
+  id nextResponder = [view nextResponder];
+  if ([nextResponder isKindOfClass:[UIViewController class]])
+    return nextResponder;
+  else if ([nextResponder isKindOfClass:[UIView class]])
+    return [self firstAvailableViewControllerForView:nextResponder];
+  else
+    return nil;
+}
+
+- (void)sendActionsForControlEvent:(KGControlEvents)event from:(id)sender {
+  NSSet *targets = [self allTargets];
+  for (id target in targets) {
+    NSArray *actions = [self actionsForTarget:target forControlEvent:event];
+    for (NSString *actionString in actions) {
+      SEL action = NSSelectorFromString(actionString);
+      [target performSelector:action withObject:sender withObject:nil];
+    }
+  }
+}
+
 //------------------------------------------------------------------------------
-// MARK: Forwarding methods for the data source
+// MARK: Delegate forwarders
 
-- (NSUInteger)numberOfPages {
-  return [dataSource numberOfPagesInDocument:(KGPagedDocControl*)self];
+- (BOOL)reportDidClickLink:(NSURL*)URL {
+  if ([delegate respondsToSelector:@selector(document:didClickLink:)])
+    return [delegate document:(KGPagedDocControl*)self didClickLink:URL];
+  return NO;  
 }
 
-- (NSURL*)urlForPageNumber:(NSUInteger)page {
-  return [dataSource document:(KGPagedDocControl*)self urlForPageNumber:page];
-}
-
-- (NSInteger)pageNumberForURL:(NSURL*)url {
-  return [dataSource document:(KGPagedDocControl*)self pageNumberForURL:url];
+- (void)reportDidExecuteCommand:(NSURL*)URL {
+  if ([delegate respondsToSelector:@selector(document:didExecuteCommand:)])
+    [delegate document:(KGPagedDocControl*)self didExecuteCommand:URL];
 }
 
 @end

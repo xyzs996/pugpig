@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGHTMLManifest.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,25 +27,14 @@
 //  SUCH DAMAGE.
 //
 
-#import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
-
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
+@interface KGHTMLManifest : NSObject {
 }
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
+@property (nonatomic,retain) NSURL *baseURL;
+@property (nonatomic,readonly) NSArray *cacheURLs;
 
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
-
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (id)initWithContentsOfFile:(NSString*)path;
+- (id)initWithContentsOfURL:(NSURL*)url;
+- (id)initWithData:(NSData*)data;
 
 @end

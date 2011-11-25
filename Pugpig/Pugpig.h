@@ -30,6 +30,10 @@
 #import "KGPagedDocControl.h"
 #import "KGPagedDocThumbnailControl.h"
 #import "KGLocalFileDataSource.h"
+#import "KGHTMLManifestDataSource.h"
 #import "KGInMemoryImageStore.h"
 #import "KGDiskImageStore.h"
-
+#import "KGSinglePanePartitioning.h"
+#import "KGBrowserViewController.h"
+#import "KGControlEvents.h"
+#import "UIView+KGAnimatedHide.h"

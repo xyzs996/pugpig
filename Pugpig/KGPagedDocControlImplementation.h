@@ -28,10 +28,8 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlDelegate.h"
-#import "KGPagedDocControlDataSource.h"
-#import "KGPagedDocControlImageStore.h"
-#import "KGPagedDocControlNavigator.h"
+#import "KGPagedDocControl.h"
+#import "KGDocumentPaneManagement.h"
 
 typedef enum { 
   KGPDFinishedNothing = 0,
@@ -40,31 +38,47 @@ typedef enum {
   KGPDFinishedEverything = KGPDFinishedLoad | KGPDFinishedJS,
 } KGPagedDocFinishedMask;
 
-@interface KGPagedDocControlImplementation : UIControl<UIScrollViewDelegate,UIWebViewDelegate,UIGestureRecognizerDelegate> {
+@interface KGPagedDocControlImplementation : KGPagedDocControl<UIScrollViewDelegate,UIWebViewDelegate,UIGestureRecognizerDelegate> {
  @private  
   KGPagedDocFinishedMask mainFinishedMask, backgroundFinishedMask;
   CGSize mainSize, backgroundSize;
   NSUInteger mainPageNumber, backgroundPageNumber;
   BOOL backgroundBusyLoading;
   CGSize lastLayoutSize;
+  KGOrientation currentOrientation;
   NSUInteger startupRequiredPages;
 }
 
 @property (nonatomic, assign) id<KGPagedDocControlDelegate> delegate;
-@property (nonatomic, retain) id<KGPagedDocControlImageStore> imageStore;
-@property (nonatomic, retain) id<KGPagedDocControlDataSource> dataSource;
+@property (nonatomic, retain) id<KGDocumentPaneManagement> paneManager;
+@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
+@property (nonatomic, retain) id<KGDocumentDataSource> dataSource;
 @property (nonatomic, retain) UIControl<KGPagedDocControlNavigator> *navigator;
+@property (nonatomic, readonly) NSUInteger numberOfPanes;
+@property (nonatomic, assign) NSUInteger numberOfPages;
+@property (nonatomic, assign) NSUInteger paneNumber;
 @property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, readonly) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
+@property (nonatomic, assign) CGFloat fractionalPaneNumber;
+@property (nonatomic, assign) CGFloat fractionalPageNumber;
+@property (nonatomic, assign) UIView *currentPageView;
 @property (nonatomic, assign) CGFloat scale;
 @property (nonatomic, assign, getter = isScrollEnabled) BOOL scrollEnabled;
 @property (nonatomic, assign) BOOL mediaPlaybackRequiresUserAction;
+@property (nonatomic, assign) BOOL linksOpenInExternalBrowser;
 @property (nonatomic, assign) BOOL bounces;
 
 - (void)hideUntilInitialised;
 - (void)hideUntilInitialised:(NSUInteger)requiredPages;
+- (void)setPaneNumber:(NSUInteger)newPaneNumber animated:(BOOL)animated;
 - (void)setPageNumber:(NSUInteger)newPageNumber animated:(BOOL)animated;
+- (BOOL)moveToPageURL:(NSURL*)url animated:(BOOL)animated;
+- (id)savePosition;
+- (void)restorePosition:(id)position;
+- (void)refreshCurrentPage;
+- (void)refreshContentSize;
+- (void)startSnapshotting;
+- (void)stopSnapshotting;
+- (NSString*)stringByEvaluatingScript:(NSString*)script;
 
 @end
 

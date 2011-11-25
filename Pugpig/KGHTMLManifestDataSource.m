@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGHTMLManifestDataSource.m
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,25 +27,63 @@
 //  SUCH DAMAGE.
 //
 
-#import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
+#import "KGHTMLManifestDataSource.h"
+#import "KGHTMLManifest.h"
 
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
+@interface KGHTMLManifestDataSource()
+@property (nonatomic, retain) NSArray *urls;
+@end
+
+@implementation KGHTMLManifestDataSource
+
+@synthesize urls;
+
+- (id)initWithPath:(NSString*)path {
+  if (![path hasPrefix:@"/"]) {
+    NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
+    path = [bundleRoot stringByAppendingPathComponent:path];
+  }  
+  KGHTMLManifest *manifest = [[[KGHTMLManifest alloc] initWithContentsOfFile:path] autorelease];
+  return [self initWithManifest:manifest];
 }
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
+- (id)initWithManifest:(KGHTMLManifest*)manifest {
+  self = [super init];
+  if (self) {
+    self.urls = [manifest cacheURLs];
+  }
+  return self;
+}
 
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
+- (void)dealloc {
+  [urls release];
+  [super dealloc];
+}
 
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (NSUInteger)numberOfPages {
+  return urls.count;
+}
+
+- (NSURL*)urlForPageNumber:(NSUInteger)pageNumber {
+  if (pageNumber >= [self numberOfPages]) return nil;
+  return [urls objectAtIndex:pageNumber];
+}
+
+- (NSInteger)pageNumberForURL:(NSURL*)url {
+  NSString *urlPath = [url path];
+  NSString *urlQuery = [url query];
+  NSInteger page = -1;
+  for (NSInteger i = 0; page == -1 && i < urls.count; i++) {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSURL *cmpUrl = [self urlForPageNumber:i];
+    if ([[cmpUrl path] isEqualToString:urlPath]) {
+      NSString *cmpUrlQuery = [cmpUrl query];
+      if ((!urlQuery && !cmpUrlQuery) || [cmpUrlQuery isEqualToString:urlQuery])
+        page = i;
+    }  
+    [pool release];    
+  }
+  return page;
+}
 
 @end

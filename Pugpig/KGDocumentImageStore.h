@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGDocumentImageStore.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,25 +27,25 @@
 //  SUCH DAMAGE.
 //
 
-#import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
+#import "KGOrientation.h"
 
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
-}
+typedef enum { 
+  KGImageStoreFetch = 0, 
+  KGImageStorePrefetch = 1, 
+  KGImageStoreTemporary = 2 
+} KGImageStoreOptions;
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
+@protocol KGDocumentImageStore <NSObject>
 
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
+- (void)releaseMemory;
+- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (void)removeImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (void)removeImagesForPageNumber:(NSUInteger)pageNumber;
+- (void)removeAllImages;
 
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+@optional
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant withOptions:(KGImageStoreOptions)options;
 
 @end

@@ -32,7 +32,6 @@
 
 @implementation KGPagedDocThumbnailControl
 
-@dynamic active;
 @dynamic numberOfPages;
 @dynamic pageNumber;
 @dynamic fractionalPageNumber;
@@ -46,7 +45,10 @@
 @dynamic landscapePlaceholderImage;
 
 + (id)alloc {
-  return [KGPagedDocThumbnailControlImplementation alloc];  
+  if ([self isEqual:[KGPagedDocThumbnailControl class]])
+    return (KGPagedDocThumbnailControl*)[KGPagedDocThumbnailControlImplementation alloc];  
+  else
+    return [super alloc];
 }
 
 - (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {

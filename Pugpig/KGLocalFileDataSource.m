@@ -46,16 +46,19 @@
   if (self) {
     NSMutableArray *tmp = [[[NSMutableArray alloc] init] autorelease];
     
-    NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
-    NSString *fullPath = [bundleRoot stringByAppendingPathComponent:path];
-    NSArray *fileNames = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:fullPath error:nil];
+    if (![path hasPrefix:@"/"]) {
+      NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
+      path = [bundleRoot stringByAppendingPathComponent:path];
+    }  
+    
+    NSArray *fileNames = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:path error:nil];
     NSString *predicate = [NSString stringWithFormat:@"self ENDSWITH '.%@'",extension];
     fileNames = [fileNames filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:predicate]];    
     
     for (NSUInteger i = 0; i < fileNames.count; i++) {
       NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
       NSString *fileName = [fileNames objectAtIndex:i];
-      NSString *filePath = [fullPath stringByAppendingPathComponent:fileName];
+      NSString *filePath = [path stringByAppendingPathComponent:fileName];
       NSURL *fileUrl = [NSURL fileURLWithPath:filePath];
       [tmp addObject:fileUrl];
       [pool release];
@@ -71,21 +74,21 @@
   [super dealloc];
 }
 
-- (NSUInteger)numberOfPagesInDocument:(KGPagedDocControl*)doc  {
+- (NSUInteger)numberOfPages {
   return urls.count;
 }
 
-- (NSURL*)document:(KGPagedDocControl*)doc urlForPageNumber:(NSUInteger)pageNumber {
-  if (pageNumber >= [self numberOfPagesInDocument:doc]) return nil;
+- (NSURL*)urlForPageNumber:(NSUInteger)pageNumber {
+  if (pageNumber >= [self numberOfPages]) return nil;
   return [urls objectAtIndex:pageNumber];
 }
 
-- (NSInteger)document:(KGPagedDocControl*)doc pageNumberForURL:(NSURL*)url {
-  NSString *urlPath = [url relativePath];
+- (NSInteger)pageNumberForURL:(NSURL*)url {
+  NSString *urlPath = [url path];
   NSInteger page = -1;
   for (NSInteger i = 0; page == -1 && i < urls.count; i++) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-    NSString *cmpUrlPath = [[self document:doc urlForPageNumber:i] relativePath];
+    NSString *cmpUrlPath = [[self urlForPageNumber:i] path];
     if ([cmpUrlPath isEqual:urlPath])
       page = i;
     [pool release];    

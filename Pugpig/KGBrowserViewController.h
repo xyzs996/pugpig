@@ -1,5 +1,5 @@
 //
-//  KGPagedDocThumbnailControl.h
+//  KGBrowserViewController.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -28,24 +28,21 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlNavigator.h"
-#import "KGDocumentImageStore.h"
 
-@interface KGPagedDocThumbnailControl : UIControl<KGPagedDocControlNavigator> {
-}
+@interface KGBrowserViewController : UIViewController
 
-@property (nonatomic, assign) NSUInteger numberOfPages;
-@property (nonatomic, assign) NSUInteger pageNumber;
-@property (nonatomic, assign) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) KGOrientation pageOrientation;
-@property (nonatomic, assign) id<KGDocumentImageStore> dataSource;
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, assign, getter=isToolbarHidden) BOOL toolbarHidden;
+@property (nonatomic, retain) UIColor *backgroundColor;
+@property (nonatomic, assign) BOOL scalesPageToFit;
+@property (nonatomic, assign) BOOL canOpenExternalBrowser;
+@property (nonatomic, assign) BOOL linksOpenInExternalBrowser;
 
-@property (nonatomic, assign) CGSize portraitSize, landscapeSize;
-@property (nonatomic, assign) CGFloat pageSeparation;
-@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
-@property (nonatomic, retain) UIImage *portraitPlaceholderImage;
-@property (nonatomic, retain) UIImage *landscapePlaceholderImage;
++ (NSArray*)supportedSchemes;
++ (void)setSupportedSchemes:(NSArray*)schemes;
++ (BOOL)isSupportedScheme:(NSString*)scheme;
 
-- (void)newImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (void)loadHTMLString:(NSString*)html;
+- (void)loadURL:(NSURL*)url;
 
 @end

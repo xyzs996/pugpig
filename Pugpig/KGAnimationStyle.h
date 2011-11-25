@@ -1,5 +1,5 @@
 //
-//  KGPagedDocControlImageStore.h
+//  KGAnimationStyle.h
 //  Pugpig
 //
 //  Copyright (c) 2011, Kaldor Holdings Ltd.
@@ -27,22 +27,11 @@
 //  SUCH DAMAGE.
 //
 
-#import "KGOrientation.h"
-
-typedef enum { 
-  KGImageStoreFetch = 0, 
-  KGImageStorePrefetch = 1, 
-  KGImageStoreTemporary = 2 
-} KGImageStoreOptions;
-
-@protocol KGPagedDocControlImageStore <NSObject>
-
-- (void)removeAllImages;
-- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-
-@optional
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation withOptions:(KGImageStoreOptions)options;
-
-@end
+typedef enum {
+  KGAnimationNone        = 0,
+  KGAnimationSlideLeft   = 1,
+  KGAnimationSlideRight  = 2,
+  KGAnimationSlideUp     = 4,
+  KGAnimationSlideDown   = 8,
+  KGAnimationFade        = 16
+} KGAnimationStyle;

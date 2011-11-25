@@ -31,7 +31,7 @@
 
 @interface KGInMemoryImageStore()
 @property (nonatomic, retain) NSMutableDictionary *store;
-- (id)keyForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
+- (id)keyForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
 @end
 
 @implementation KGInMemoryImageStore
@@ -51,24 +51,39 @@
   [super dealloc];
 }
 
+- (void)releaseMemory {
+  [store removeAllObjects];
+}
+
+- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  [store setObject:image forKey:[self keyForPageNumber:pageNumber variant:variant]];
+}
+
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  return [store objectForKey:[self keyForPageNumber:pageNumber variant:variant]];
+}
+
+- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  return [store objectForKey:[self keyForPageNumber:pageNumber variant:variant]] != nil;
+}
+
+- (void)removeImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  [store removeObjectForKey:[self keyForPageNumber:pageNumber variant:variant]];
+}
+
+- (void)removeImagesForPageNumber:(NSUInteger)pageNumber {
+  NSArray *keys = [store allKeys];
+  NSString *predicateString = [NSString stringWithFormat:@"self BEGINSWITH '%d-'",pageNumber];
+  keys = [keys filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:predicateString]];
+  [store removeObjectsForKeys:keys];
+}
+
 - (void)removeAllImages {
   [store removeAllObjects];
 }
 
-- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  [store setObject:image forKey:[self keyForPageNumber:pageNumber orientation:orientation]];
-}
-
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  return [store objectForKey:[self keyForPageNumber:pageNumber orientation:orientation]];
-}
-
-- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  return [store objectForKey:[self keyForPageNumber:pageNumber orientation:orientation]] != nil;
-}
-
-- (id)keyForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation {
-  return [NSNumber numberWithInt:(pageNumber*2 + (int)orientation)];
+- (id)keyForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant {
+  return [NSString stringWithFormat:@"%d-%@", pageNumber, variant];
 }
 
 @end

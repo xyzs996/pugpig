@@ -29,28 +29,45 @@
 
 #import <UIKit/UIKit.h>
 #import "KGPagedDocControlDelegate.h"
-#import "KGPagedDocControlDataSource.h"
-#import "KGPagedDocControlImageStore.h"
 #import "KGPagedDocControlNavigator.h"
+#import "KGDocumentImageStore.h"
+#import "KGDocumentDataSource.h"
+#import "KGAnimationStyle.h"
+#import "KGDocumentPaneManagement.h"
 
 @interface KGPagedDocControl : UIControl {    
 }
 
 @property (nonatomic, assign) id<KGPagedDocControlDelegate> delegate;
-@property (nonatomic, retain) id<KGPagedDocControlImageStore> imageStore;
-@property (nonatomic, retain) id<KGPagedDocControlDataSource> dataSource;
+@property (nonatomic, retain) id<KGDocumentPaneManagement> paneManager;
+@property (nonatomic, retain) id<KGDocumentImageStore> imageStore;
+@property (nonatomic, retain) id<KGDocumentDataSource> dataSource;
 @property (nonatomic, retain) UIControl<KGPagedDocControlNavigator> *navigator;
+@property (nonatomic, readonly) NSUInteger numberOfPanes;
+@property (nonatomic, readonly) NSUInteger numberOfPages;
+@property (nonatomic, assign) NSUInteger paneNumber;
 @property (nonatomic, assign) NSUInteger pageNumber;
+@property (nonatomic, readonly) CGFloat fractionalPaneNumber;
 @property (nonatomic, readonly) CGFloat fractionalPageNumber;
-@property (nonatomic, assign) CGSize portraitSize;
-@property (nonatomic, assign) CGSize landscapeSize;
+@property (nonatomic, readonly) UIView *currentPageView;
 @property (nonatomic, assign) CGFloat scale;
 @property (nonatomic, assign, getter = isScrollEnabled) BOOL scrollEnabled;
 @property (nonatomic, assign) BOOL mediaPlaybackRequiresUserAction;
+@property (nonatomic, assign) BOOL linksOpenInExternalBrowser;
 @property (nonatomic, assign) BOOL bounces;
 
 - (void)hideUntilInitialised;
 - (void)hideUntilInitialised:(NSUInteger)requiredPages;
+- (void)setPaneNumber:(NSUInteger)newPaneNumber animated:(BOOL)animated;
 - (void)setPageNumber:(NSUInteger)newPageNumber animated:(BOOL)animated;
+- (BOOL)moveToPageURL:(NSURL*)url animated:(BOOL)animated;
+- (id)savePosition;
+- (void)restorePosition:(id)position;
+- (void)refreshCurrentPage;
+- (void)refreshContentSize;
+- (void)startSnapshotting;
+- (void)stopSnapshotting;
+- (NSString*)stringByEvaluatingScript:(NSString*)script;
+- (KGOrientation)orientationForSize:(CGSize)size;
 
 @end

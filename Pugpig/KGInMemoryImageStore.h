@@ -28,14 +28,17 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "KGPagedDocControlImageStore.h"
+#import "KGDocumentImageStore.h"
 
-@interface KGInMemoryImageStore : NSObject<KGPagedDocControlImageStore> {
+@interface KGInMemoryImageStore : NSObject<KGDocumentImageStore> {
 }
 
+- (void)releaseMemory;
+- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (void)removeImageForPageNumber:(NSUInteger)pageNumber variant:(NSString*)variant;
+- (void)removeImagesForPageNumber:(NSUInteger)pageNumber;
 - (void)removeAllImages;
-- (void)saveImage:(UIImage*)image forPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-- (UIImage*)imageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
-- (BOOL)hasImageForPageNumber:(NSUInteger)pageNumber orientation:(KGOrientation)orientation;
 
 @end
