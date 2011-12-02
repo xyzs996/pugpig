@@ -1,4 +1,4 @@
-<h1><img src="http://pugpig.com/img/pugpig-small.png" width="50" height="48" style="vertical-align:top;"/><span style="font-size:150%;margin-left:0.25em;">Pugpig</span></h1>
+<h1><img src="http://pugpig.com/img/ppsmall.png" width="52" height="48" style="vertical-align:top;"/><span style="font-size:150%;margin-left:0.25em;">Pugpig</span></h1>
 
 Overview
 --------
@@ -14,6 +14,44 @@ More information
 ----------------
 
 For more information about the pugpig framework visit the [pupig website][1].
+
+Change log
+----------
+
+### Version 1.1 ###
+
+* New features
+
+  * Added an HTML manifest data source giving more control of page order.
+  * Support for opening external links in a built in browser rather than opening Safari.
+  * Support for moving to a particular page by specifing the page url.
+  * Support for links to fragment urls.
+  * Added methods for saving and restoring the current position.
+  * Added the ability to specify a pane manager which can be extended to support multiple panes per page.
+  * New properties for accessing the paneNumber, fractionalPaneNumber and numberOfPanes.
+  * Additional control events for use when extending pugpig's base functionality.
+  * Support for key-value observing on more properties for the same reason.
+  * Support for intercepting links in the control delegate.
+  * More control over the animation used when showing and hiding the navigator.
+  * Support for a metatag that gets the app to callback javascript when snapshotting is complete
+  * Changed the way our controls are allocated so they can be subclassed (to a limited extent).
+  * Added a currentPageView property providing access to the UIWebView of the current page.
+  * Added a method for evaluating scripts on the current page.
+  * Support for specifying the cache directory when instantiating a disk image store.
+  * Support for specifying an absolute path when instantiating a local file data source.
+  * Several bug fixes and interface changes.
+
+* Breaking changes
+
+  * For reasons of efficiency, the page number is no longer set automatically when setting the datasource.
+  * The portraitSize and landscapeSize properties have been removed.
+  * The data source protocol has been renamed and the methods simplified.
+  * The image store protocol has been renamed, many of the methods changed, and several new methods added.
+  * The navigator protocol no longer has an active property and the dataSource and imageStore types have changed.
+
+### Version 1.0 ###
+
+  * Initial release
 
 License
 -------
