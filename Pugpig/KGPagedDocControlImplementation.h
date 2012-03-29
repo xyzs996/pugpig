@@ -47,6 +47,7 @@ typedef enum {
   CGSize lastLayoutSize;
   KGOrientation currentOrientation;
   NSUInteger startupRequiredPages;
+  CGPoint refreshScrollPosition;
 }
 
 @property (nonatomic, assign) id<KGPagedDocControlDelegate> delegate;
@@ -63,6 +64,8 @@ typedef enum {
 @property (nonatomic, assign) UIView *currentPageView;
 @property (nonatomic, assign) CGFloat scale;
 @property (nonatomic, assign, getter = isScrollEnabled) BOOL scrollEnabled;
+@property (nonatomic, assign, getter = isFragmentNavigationAnimated) BOOL fragmentNavigationAnimated;
+@property (nonatomic, assign) NSInteger fragmentScrollOffset;
 @property (nonatomic, assign) BOOL mediaPlaybackRequiresUserAction;
 @property (nonatomic, assign) BOOL linksOpenInExternalBrowser;
 @property (nonatomic, assign) BOOL bounces;

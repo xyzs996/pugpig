@@ -49,6 +49,7 @@
 @property (nonatomic, assign) BOOL delayedLayoutChange;
 @property (nonatomic, copy) NSString *targetFragment;
 @property (nonatomic, assign) NSUInteger targetFragmentPage;
+@property (nonatomic, assign) BOOL scrollViewAnimating;
 
 - (void)initControl;
 - (BOOL)interfaceOrientationMatchesOrientation:(KGOrientation)orientation;
@@ -59,6 +60,8 @@
 - (void)repositionAfterLayoutChange;
 - (UIImageView*)createImageView;
 - (UIActivityIndicatorView*)createBusyView;
+- (void)preloadImageViewsForJumpFromPane:(NSInteger)start toPane:(NSInteger)end;
+- (void)resetImageViewsForPageNumber:(NSUInteger)page offset:(NSUInteger)offset orientation:(KGOrientation)orientation;
 - (void)positionImageViewsCentredOnPane:(NSInteger)pane;
 - (void)positionImageView:(UIImageView*)imageView andBusyView:(UIActivityIndicatorView*)busyView forPane:(NSInteger)pane;
 - (UIWebView*)createWebViewWithSize:(CGSize)size;
@@ -81,6 +84,7 @@
 - (BOOL)loadBackgroundWebViewsForPageNumber:(NSInteger)page withOrientation:(KGOrientation)orientation size:(CGSize)size;
 - (void)updateNavigatorDataSource;
 - (void)navigatorPageChanged;
+- (void)preloadImagesForCurrentPane;
 - (void)preloadImagesForPane:(NSUInteger)pane;
 - (void)preloadImageForPane:(NSInteger)pane inRange:(NSRange)range;
 - (void)startupUpdateProgress:(BOOL)afterSnapshot;
@@ -112,6 +116,8 @@
 @synthesize currentPageView;
 @synthesize scale;
 @synthesize scrollEnabled;
+@synthesize fragmentNavigationAnimated;
+@synthesize fragmentScrollOffset;
 @synthesize mediaPlaybackRequiresUserAction;
 @synthesize linksOpenInExternalBrowser;
 @dynamic bounces;
@@ -124,6 +130,7 @@
 @synthesize delayedLayoutChange;
 @synthesize targetFragment;
 @synthesize targetFragmentPage;
+@synthesize scrollViewAnimating;
 
 //------------------------------------------------------------------------------
 // MARK: NSObject/UIView messages
@@ -187,6 +194,16 @@
   startupRequiredPages = MIN(requiredPages, numberOfPages);
   if ([self startupPagesInitialised] < startupRequiredPages)
     self.startupView = [[[KGStartupView alloc] init] autorelease];
+}
+
+- (void)setPaneManager:(id<KGDocumentPaneManagement>)newPaneManager {
+  if (paneManager != newPaneManager) {
+    [paneManager release];
+    paneManager = [newPaneManager retain];
+    
+    [paneManager setImageStore:imageStore];
+    [paneManager setDataSource:dataSource];
+  }
 }
 
 - (void)setImageStore:(id<KGDocumentImageStore>)newImageStore {
@@ -270,6 +287,7 @@
     [self stopSnapshottingAndRestartAfterDelay:1.0];
     // We return after initiating the scroll animation since setPaneNumber
     // will be called again once the animation is complete.
+    [self preloadImageViewsForJumpFromPane:paneNumber toPane:newPaneNumber];
     CGRect rect = [self frameForPaneNumber:newPaneNumber];
     [scrollView scrollRectToVisible:rect animated:YES];
     return;
@@ -281,7 +299,8 @@
     [self didChangeValueForKey:@"paneNumber"];
     CGRect rect = [self frameForPaneNumber:newPaneNumber];
     [scrollView scrollRectToVisible:rect animated:NO];
-    [self preloadImagesForPane:paneNumber];
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(preloadImagesForCurrentPane) object:nil];
+    [self performSelector:@selector(preloadImagesForCurrentPane) withObject:nil afterDelay:0];
   }
     
   if (pageNumber != newPageNumber) {
@@ -289,6 +308,7 @@
     pageNumber = newPageNumber;
     [self didChangeValueForKey:@"pageNumber"];
     navigator.pageNumber = newPageNumber;
+    refreshScrollPosition = CGPointZero;
     [self loadMainWebView];
   }
   
@@ -309,9 +329,17 @@
 - (BOOL)moveToPageURL:(NSURL*)url animated:(BOOL)animated {
   NSInteger page = [dataSource pageNumberForURL:url];
   if (page == -1) return NO;
-  [self setTargetFragment:[url fragment]];
-  [self setTargetFragmentPage:page];
-  [self setPageNumber:page animated:animated];
+  NSString *fragment = [url fragment];
+  if (page == pageNumber) {
+    [self setMainWebViewFragment:fragment];
+    [self moveToPaneWithFragment:fragment];
+    [self scrollMainWebViewToFragment:fragment];
+  }
+  else {
+    [self setTargetFragment:fragment];
+    [self setTargetFragmentPage:page];
+    [self setPageNumber:page animated:animated];
+  }
   return YES;
 }
 
@@ -358,8 +386,9 @@
 }
 
 - (void)refreshCurrentPage {
-  // TODO: see if we can make this refresh smoother and also
-  // preserve scroll position if possible
+  // TODO: see if we can make this refresh smoother
+  UIScrollView *webScrollView = [[mainWebView subviews] lastObject];
+  refreshScrollPosition = [webScrollView contentOffset];
   self.mainWebView.tag = -1;
   [self loadMainWebView];
 }
@@ -409,6 +438,7 @@
 // MARK: UIScrollViewDelegate messages
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)sender {
+  [self setScrollViewAnimating:NO];
   [scrollView setMaxDelta:100.0];
   // Cancel any background loads temporarily so we have smoother dragging.
   [self stopSnapshottingAndRestartAfterDelay:1.0];
@@ -433,6 +463,7 @@
 }
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)sender {
+  [self setScrollViewAnimating:NO];
   [self updateFractionalPosition];
   navigator.fractionalPageNumber = fractionalPageNumber;
   NSInteger destPaneNum = round(fractionalPaneNumber);
@@ -509,13 +540,15 @@
         if (linksOpenInExternalBrowser || ![KGBrowserViewController isSupportedScheme:scheme])
           [[UIApplication sharedApplication] openURL:URL];
         else {
-          KGBrowserViewController *bvc = [[[KGBrowserViewController alloc] init] autorelease];
-          [bvc setModalPresentationStyle:UIModalPresentationFullScreen];
-          [bvc setBackgroundColor:[UIColor blackColor]];
-          [bvc setScalesPageToFit:YES];
-          [bvc loadURL:URL];
           UIViewController *parentvc = [self firstAvailableViewControllerForView:self];
-          [parentvc presentModalViewController:bvc animated:YES];
+          if ([parentvc modalViewController] == nil) {
+            KGBrowserViewController *bvc = [[[KGBrowserViewController alloc] init] autorelease];
+            [bvc setModalPresentationStyle:UIModalPresentationFullScreen];
+            [bvc setBackgroundColor:[UIColor blackColor]];
+            [bvc setScalesPageToFit:YES];
+            [bvc loadURL:URL];
+            [parentvc presentModalViewController:bvc animated:YES];
+          }  
         }  
         shouldStart = NO;
       }
@@ -636,15 +669,15 @@
   navigator.pageOrientation = currentOrientation;
   paneNumber = -1;
 
-  if (mainFinishedMask == KGPDFinishedEverything && mainWebView.tag != -1) {
-    [paneManager layoutWebView:mainWebView pageSize:lastLayoutSize orientation:currentOrientation];
-    [self sendActionsForControlEvent:KGControlEventContentLayoutChanged from:self];
-  }  
+  leftImageView.tag = rightImageView.tag = centreImageView.tag = -1;
+
+  BOOL isLoaded = (mainFinishedMask == KGPDFinishedEverything && mainWebView.tag != -1);
+  if (isLoaded) [paneManager layoutWebView:mainWebView pageSize:lastLayoutSize orientation:currentOrientation];
 
   [self refreshContentSize];
   [self restorePosition:position];
-  
-  leftImageView.tag = rightImageView.tag = centreImageView.tag = -1;
+
+  if (isLoaded) [self sendActionsForControlEvent:KGControlEventContentLayoutChanged from:self];
   
   [self stopSnapshotting];
   [self startSnapshotting];
@@ -675,7 +708,51 @@
   return [busyView autorelease];
 }
 
+- (void)preloadImageViewsForJumpFromPane:(NSInteger)start toPane:(NSInteger)end {
+  NSInteger leftPane, rightPane;
+  if (start < end) {
+    leftPane = end;
+    rightPane = end-1;
+    start = MAX(start, end-2);
+  }
+  else {
+    rightPane = end;
+    leftPane = end+1;
+    start = MIN(start, end+2);
+  }
+  
+  leftImageView.image = [paneManager snapshotForPaneNumber:leftPane orientation:currentOrientation withOptions:KGImageStoreFetch];
+  leftImageView.tag = leftPane;
+  rightImageView.image = [paneManager snapshotForPaneNumber:rightPane orientation:currentOrientation withOptions:KGImageStoreFetch];
+  rightImageView.tag = rightPane;
+  
+  [self setScrollViewAnimating:YES];
+  CGRect rect = [self frameForPaneNumber:start];
+  [scrollView scrollRectToVisible:rect animated:NO];
+}
+
+- (void)resetImageViewsForPageNumber:(NSUInteger)page offset:(NSUInteger)offset orientation:(KGOrientation)orientation {
+  NSUInteger pane = [paneManager paneForPageNumber:page orientation:orientation] + offset;
+  if (leftImageView.tag == pane) leftImageView.tag = -1;
+  if (rightImageView.tag == pane) rightImageView.tag = -1;
+  if (centreImageView.tag == pane) centreImageView.tag = -1;
+}
+
 - (void)positionImageViewsCentredOnPane:(NSInteger)pane {
+  UIImageView **imageViews[] = { &leftImageView, &centreImageView, &rightImageView };
+  for (int i = 0; i < 3; i++) {
+    NSInteger relpane = pane+i-1;
+    UIImageView **imageView = imageViews[i];
+    for (int j = 0; j < 3; j++) {
+      UIImageView **imageView2 = imageViews[j];
+      if (i != j && (*imageView2).tag == relpane) {
+        UIImageView *tmpImageView = *imageView;
+        *imageView = *imageView2;
+        *imageView2 = tmpImageView;
+        break;
+      }
+    }
+  }
   [self positionImageView:centreImageView andBusyView:centreBusyView forPane:pane];
   [self positionImageView:leftImageView andBusyView:leftBusyView forPane:pane - 1];
   [self positionImageView:rightImageView andBusyView:rightBusyView forPane:pane + 1];
@@ -687,14 +764,17 @@
     busyView.hidden = YES;
   }
   else {
-    // TODO: optimize this when imageView.tag == pane
-    UIImage *paneImage = [paneManager snapshotForPaneNumber:pane orientation:currentOrientation withOptions:KGImageStoreFetch];
-    CGRect paneFrame = [self frameForPaneNumber:pane];
-    
+    UIImage *paneImage;
+    if (imageView.tag == pane || scrollViewAnimating)
+      paneImage = imageView.image;
+    else
+      paneImage = [paneManager snapshotForPaneNumber:pane orientation:currentOrientation withOptions:KGImageStoreFetch];
+
+    CGRect paneFrame = [self frameForPaneNumber:pane];  
     if (paneImage) {
       imageView.image = paneImage;
       imageView.frame = paneFrame;
-      imageView.tag = pane;
+      if (!scrollViewAnimating) imageView.tag = pane;
       imageView.hidden = NO;
       busyView.hidden = YES;
       [busyView stopAnimating];
@@ -807,9 +887,13 @@
   }
   
   [paneManager takeSnapshotsForWebView:webView pageSize:size orientation:orientation progressHandler:^(NSUInteger offset, BOOL snapTaken){
+    if (snapTaken)
+      [self resetImageViewsForPageNumber:page offset:offset orientation:orientation];
     if (!offset) {
-      [navigator newImageForPageNumber:page orientation:orientation];
-      if (!snapTaken) [self startupUpdateProgress:NO];
+      if (snapTaken)
+        [navigator newImageForPageNumber:page orientation:orientation];
+      else  
+        [self startupUpdateProgress:NO];
     }  
   } completionHandler:^(UIWebView *webView){
     [self startupUpdateProgress:YES];
@@ -887,6 +971,11 @@
   // web view is no wider than its view width. If not, the web view's scroller
   // will intercept gestures that were intended for the containing scroll view.
   if (scrollEnabled) [mainWebView setScrollWidth:mainWebView.bounds.size.width];
+  if (!CGPointEqualToPoint(refreshScrollPosition, CGPointZero)) {
+    UIScrollView *webScrollView = [[mainWebView subviews] lastObject];
+    [webScrollView setContentOffset:refreshScrollPosition animated:NO];
+    refreshScrollPosition = CGPointZero;
+  }
   centreImageView.hidden = YES;
   centreBusyView.hidden = YES;
 }
@@ -901,14 +990,16 @@
 
 - (void)scrollMainWebViewToFragment:(NSString*)fragment {
   if (fragment && [self isScrollEnabled]) {
-    NSUInteger midPoint = self.bounds.size.height/2;
     NSString *scrollScript = [NSString stringWithFormat:@
       "var el = document.getElementById('%@');"
       "var rect = el.getBoundingClientRect();"
-      "var top = rect.top + document.body.scrollTop;"
-      "top -= %d;"
-      "if (top > 0) window.scrollTo(0, top);",fragment,midPoint];
-    [self stringByEvaluatingScript:scrollScript];
+      "rect.top + document.body.scrollTop;",fragment];
+    NSInteger top = [[self stringByEvaluatingScript:scrollScript] integerValue];
+    top -= fragmentScrollOffset;
+    UIScrollView *webScrollView = [[mainWebView subviews] lastObject];
+    NSInteger maxtop = webScrollView.contentSize.height - webScrollView.bounds.size.height;
+    CGPoint offset = CGPointMake(webScrollView.contentOffset.x, MAX(MIN(top,maxtop),0));
+    [webScrollView setContentOffset:offset animated:fragmentNavigationAnimated];
   }
 }
 
@@ -949,7 +1040,16 @@
 - (void)loadBackgroundWebViews {
   // Don't load while the main view is loading since that has a tendency to
   // cause rendering problems which show up in the snapshot.
-  if (mainFinishedMask != KGPDFinishedEverything) {
+  BOOL delayLoading = mainFinishedMask != KGPDFinishedEverything;
+
+  // Don't load when the foreground webpage tells you not to; this allows highly
+  // interactive foreground views to display and animate smoothly.
+  if (!delayLoading) {
+    NSString *stopSnapshottingTag = [self metaTag:@"stopSnapshotting" forWebView:mainWebView];
+    delayLoading = (stopSnapshottingTag && [stopSnapshottingTag localizedCaseInsensitiveCompare:@"yes"] == NSOrderedSame);
+  }
+
+  if (delayLoading) {
     backgroundBusyLoading = NO;
     [self startSnapshotting];
     return;
@@ -986,6 +1086,7 @@
   
   self.backgroundWebView = [self createWebViewWithSize:backgroundSize];
   backgroundWebView.tag = -1;
+  backgroundWebView.mediaPlaybackRequiresUserAction = YES;
   
   backgroundFinishedMask = KGPDFinishedNothing;
   [self initWebView:backgroundWebView withDataSourcePageNumber:backgroundPageNumber foreground:NO];
@@ -1005,6 +1106,10 @@
   [self setPageNumber:navigator.pageNumber animated:YES];
 }
 
+- (void)preloadImagesForCurrentPane {
+  [self preloadImagesForPane:paneNumber];
+}
+    
 - (void)preloadImagesForPane:(NSUInteger)pane {
   // For a slow image cache, if we request an image while the view is scrolling,
   // it can cause the interface to jerk. By calling this function when a scroll

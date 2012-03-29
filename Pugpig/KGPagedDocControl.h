@@ -52,6 +52,8 @@
 @property (nonatomic, readonly) UIView *currentPageView;
 @property (nonatomic, assign) CGFloat scale;
 @property (nonatomic, assign, getter = isScrollEnabled) BOOL scrollEnabled;
+@property (nonatomic, assign, getter = isFragmentNavigationAnimated) BOOL fragmentNavigationAnimated;
+@property (nonatomic, assign) NSInteger fragmentScrollOffset;
 @property (nonatomic, assign) BOOL mediaPlaybackRequiresUserAction;
 @property (nonatomic, assign) BOOL linksOpenInExternalBrowser;
 @property (nonatomic, assign) BOOL bounces;

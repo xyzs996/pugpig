@@ -112,6 +112,11 @@
 //------------------------------------------------------------------------------
 // MARK: Public properties
 
+- (void)setHidden:(BOOL)hidden {
+  [super setHidden:hidden];
+  if (!hidden) [self redrawContent];
+}
+
 - (void)setNumberOfPages:(NSUInteger)newNumberOfPages {
   if (newNumberOfPages != numberOfPages) {
     numberOfPages = newNumberOfPages;
@@ -242,11 +247,13 @@
 }
 
 - (void)redrawContent {
-  CGSize size = self.bounds.size;
-  CGFloat extra = pageSize.width+pageSeparation;
-  CGRect crect = CGRectMake(scrollView.contentOffset.x - extra, 0, size.width+extra*2, size.height);
-  [contentView setFrame:crect];
-  [contentView setNeedsDisplay];
+  if (![self isHidden]) {
+    CGSize size = self.bounds.size;
+    CGFloat extra = pageSize.width+pageSeparation;
+    CGRect crect = CGRectMake(scrollView.contentOffset.x - extra, 0, size.width+extra*2, size.height);
+    [contentView setFrame:crect];
+    [contentView setNeedsDisplay];
+  }
 }
 
 - (void)redrawContentIfNeeded {

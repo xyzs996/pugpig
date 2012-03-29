@@ -33,34 +33,37 @@
 @implementation UIWebView(KGAdditions)
 
 - (BOOL)isScrollEnabled {
-	UIScrollView *webScrollView = [[self subviews] lastObject];
-	return (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) ? webScrollView.scrollEnabled : NO;
+  UIScrollView *webScrollView = [[self subviews] lastObject];
+  return (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) ? webScrollView.scrollEnabled : NO;
 }
 
 - (void)setScrollEnabled:(BOOL)canScroll {
-	UIScrollView *webScrollView = [[self subviews] lastObject];
-	if (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) {
+  UIScrollView *webScrollView = [[self subviews] lastObject];
+  if (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) {
     // When changing from a scrolling webview to a non-scrolling webview
     // we need to scrollToTop to make sure the view doesn't end up scrolled
     // halfway down a page with no way to get back up.
     if (webScrollView.scrollEnabled && !canScroll)
       [self stringByEvaluatingJavaScriptFromString:@"document.getElementsByTagName('body')[0].scrollTop = 0;"];
-		webScrollView.scrollEnabled = canScroll;
-	}
+    webScrollView.scrollEnabled = canScroll;
+  }
 }
 
 - (void)setScrollWidth:(CGFloat)width {
-	UIScrollView *webScrollView = [[self subviews] lastObject];
-	if (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) {
-    webScrollView.contentSize = CGSizeMake(width, webScrollView.contentSize.height);
+  UIScrollView *webScrollView = [[self subviews] lastObject];
+  if (webScrollView && [webScrollView isKindOfClass:[UIScrollView class]]) {
+    webScrollView.contentSize = CGSizeMake((NSInteger)width, (NSInteger)webScrollView.contentSize.height);
   }  
 }
 
 - (UIImage*)getImageFromView {
+  BOOL isRetina = [UIScreen mainScreen].scale > 1.0;
   UIImage *snapImage;
   for (int i = 0; i < 2; i++) {
     UIGraphicsBeginImageContextWithOptions(self.bounds.size, YES, 1.0);
-    [self.layer renderInContext:UIGraphicsGetCurrentContext()];
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (isRetina) CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+    [self.layer renderInContext:ctx];
     snapImage = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
   }

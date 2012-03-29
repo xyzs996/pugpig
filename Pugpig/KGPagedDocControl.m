@@ -46,6 +46,8 @@
 @dynamic currentPageView;
 @dynamic scale;
 @dynamic scrollEnabled;
+@dynamic fragmentNavigationAnimated;
+@dynamic fragmentScrollOffset;
 @dynamic mediaPlaybackRequiresUserAction;
 @dynamic linksOpenInExternalBrowser;
 @dynamic bounces;

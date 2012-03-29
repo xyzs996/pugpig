@@ -93,6 +93,7 @@
 }
 
 - (void)dealloc {
+  [baseURL release];
   [cacheLines release];
   [super dealloc];
 }
