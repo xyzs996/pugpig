@@ -18,6 +18,27 @@ For more information about the pugpig framework visit the [pupig website][1].
 Change log
 ----------
 
+### Version 1.3 ###
+
+  * Optimised performance on retina displays.
+  * Smoother animation when jumping between pages that are far apart.
+  * Improved snapshot image loading performance.
+  * Allow highly interactive pages to pause the snapshotter while they're in the foreground. 
+  * Attempt to retain the current scroll position when refreshing the current page.
+  * Bugfix: we now only send the ContentLayoutChanged event after refreshing the content size and restoring the position.
+  * Bugfix: jittery scrolling on scaled webview.
+
+### Version 1.2 ###
+
+  * Added property for setting the fragment scroll offset rather than hard coding it to the midpoint.
+  * Only redraw the content in the thumbnail control if it's visible, which should improve performance when swiping between pages.
+  * Bugfix: don't show internal browser view if another modal dialog is already visible.
+  * Bugfix: fixed navigating to a fragment url on the current page.
+  * Bugfix: plug memory leak in KGHTMLManifest.
+  * Bugfix: if the pane manager was set, but the image store wasn't, then snapshots wouldn't work correctly.
+  * Bugfix: navigator was being sent a newImageforPageNumber callback too often (i.e. when there wasn't actually a new image).
+  * Bugfix: disable media autoplay for the snapshotter web view.
+
 ### Version 1.1 ###
 
 * New features
@@ -56,7 +77,7 @@ Change log
 License
 -------
 
-Copyright (c) 2011, Kaldor Holdings Ltd.
+Copyright (c) 2012, Kaldor Holdings Ltd.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
