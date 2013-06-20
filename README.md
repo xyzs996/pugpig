@@ -1,4 +1,3 @@
-<h1><img src="http://pugpig.com/img/ppsmall.png" width="52" height="48" style="vertical-align:top;"/><span style="font-size:150%;margin-left:0.25em;">Pugpig</span></h1>
 
 Overview
 --------
@@ -13,7 +12,7 @@ Read the [Getting Started Guide][2] on the pugpig website.
 More information
 ----------------
 
-For more information about the pugpig framework visit the [pupig website][1].
+For more information about the pugpig framework visit the [pugpig website][1].
 
 Change log
 ----------
