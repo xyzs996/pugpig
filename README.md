@@ -1,18 +1,25 @@
-
 Overview
 --------
 
-Pugpig is an open source framework that allows you to publish beautiful HTML5 magazines, books, newspapers and videos for the iPad, iPhone and more. Pugpig is a hybrid that mixes the best bits of native code with the juiciest cuts of HTML, producing a lovely reading experience whilst allowing you to publish once across all platforms.
+Pugpig is a framework that allows you to publish beautiful HTML5 magazines, books, newspapers and videos for the 
+iPad, iPhone and more. 
+Pugpig is a hybrid that mixes the best bits of native code with the juiciest cuts of HTML, 
+producing a lovely reading experience whilst allowing you to publish once across all platforms.
 
-How to use pugpig
------------------
+The core of the framework provided here is open source, although this does not frequently change. The commercial product does contain more features.
 
-Read the [Getting Started Guide][2] on the pugpig website.
+How to use pugpig free
+----------------------
+
+Read the [Getting Started Guide][2] on the pugpig website. Note that these instructions only refer to this open source version. 
+Refer to the Pugpig Wiki for documentation on the commercial product.
 
 More information
 ----------------
 
 For more information about the pugpig framework visit the [pugpig website][1].
+
+You can download this project (including a starting template) from http://pugpig.com/download/PugpigTemplate.pkg
 
 Change log
 ----------
